@@ -1,0 +1,13 @@
+{
+  "ticket_id": "ENG-0001",
+  "summary": "Fix rate limit configuration parsing",
+  "description": "The ApiRateLimiter does not correctly parse the rate limit from configuration, causing it to fall back to a default value.",
+  "expected_behavior": "Rate limiter should read the maximum requests per minute from the configuration and enforce it.",
+  "actual_behavior": "Rate limiter ignores the configuration and uses a hardcoded default.",
+  "steps_to_reproduce": [
+    "Configure rate limit to 50 in appsettings.json",
+    "Send 60 requests in 1 minute",
+    "Observe that requests after 50 are not throttled if the hardcoded limit is higher"
+  ],
+  "additional_notes": "Please check RateLimiterService.cs or configuration initialization."
+}
