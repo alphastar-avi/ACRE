@@ -1,0 +1,20 @@
+# Go build outputs
+orchestrator/acre
+orchestrator/acre.exe
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# .NET build outputs
+**/bin/
+**/obj/
+.vs/
+.idea/
+*.user
+*.suo
+
+# OS files
+.DS_Store
+Thumbs.db
