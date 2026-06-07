@@ -1,6 +1,6 @@
 # ACRE
 
-An Incident Driven Automatic Code Remediation Engine written in Go.
+An Incident Driven Automatic Code Remediation Engine
 
 ## Features
 
