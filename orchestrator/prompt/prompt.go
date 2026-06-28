@@ -2,6 +2,8 @@ package prompt
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"acre/ticket"
@@ -13,6 +15,26 @@ func Generate(t *ticket.Ticket, repoPath string) string {
 
 	builder.WriteString("You are a senior software engineer tasked with fixing a bug in the following repository:\n")
 	builder.WriteString(fmt.Sprintf("Repository Path: %s\n\n", repoPath))
+
+	// Look for OKF codebase index context
+	repoName := filepath.Base(repoPath)
+	okfPaths := []string{
+		filepath.Join("OKF", repoName+".md"),
+		filepath.Join("..", "OKF", repoName+".md"),
+	}
+	var okfContent string
+	for _, p := range okfPaths {
+		if data, err := os.ReadFile(p); err == nil {
+			okfContent = string(data)
+			break
+		}
+	}
+
+	if okfContent != "" {
+		builder.WriteString("## Codebase Context & Index (Open Knowledge Format)\n")
+		builder.WriteString("Use this codebase mapping to locate relevant layers, endpoints, services, configurations, and test files quickly. Focus your efforts based on these components:\n")
+		builder.WriteString(okfContent + "\n\n")
+	}
 
 	builder.WriteString("## Incident Report\n")
 	builder.WriteString(fmt.Sprintf("**Ticket ID:** %s\n", t.TicketID))
