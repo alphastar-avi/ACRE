@@ -5,11 +5,17 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 // Run executes 'dotnet build' in the target repository.
 func Run(repoPath string) (exitCode int, stdout string, stderr string) {
-	cmd := exec.Command("dotnet", "build")
+	args := []string{"build"}
+	if sln := findSolutionFile(repoPath); sln != "" {
+		args = append(args, sln)
+	}
+
+	cmd := exec.Command("dotnet", args...)
 	cmd.Dir = repoPath
 
 	var stdoutBuf, stderrBuf bytes.Buffer
@@ -32,4 +38,32 @@ func Run(repoPath string) (exitCode int, stdout string, stderr string) {
 	}
 
 	return exitCode, stdout, stderr
+}
+
+func findSolutionFile(repoPath string) string {
+	files, err := os.ReadDir(repoPath)
+	if err != nil {
+		return ""
+	}
+	var slnFiles []string
+	for _, f := range files {
+		if f.IsDir() {
+			continue
+		}
+		name := f.Name()
+		if strings.HasSuffix(name, ".sln") || strings.HasSuffix(name, ".slnx") {
+			slnFiles = append(slnFiles, name)
+		}
+	}
+	if len(slnFiles) == 0 {
+		return ""
+	}
+	// Prefer solution files that do not contain "everything" or "all"
+	for _, sln := range slnFiles {
+		lower := strings.ToLower(sln)
+		if !strings.Contains(lower, "everything") && !strings.Contains(lower, "all") {
+			return sln
+		}
+	}
+	return slnFiles[0]
 }
