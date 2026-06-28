@@ -4,15 +4,29 @@ import (
 	"flag"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 
+	"acre/okf"
 	"acre/runner"
 )
 
 func loadEnv() {
-	bytes, err := os.ReadFile(".env")
+	// Try loading from current working directory
+	if err := parseEnvFile(".env"); err == nil {
+		return
+	}
+	// Try loading from executable directory
+	if exePath, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exePath)
+		_ = parseEnvFile(filepath.Join(exeDir, ".env"))
+	}
+}
+
+func parseEnvFile(path string) error {
+	bytes, err := os.ReadFile(path)
 	if err != nil {
-		return // Ignore if .env doesn't exist
+		return err
 	}
 	lines := strings.Split(string(bytes), "\n")
 	for _, line := range lines {
@@ -31,16 +45,27 @@ func loadEnv() {
 			os.Setenv(key, value)
 		}
 	}
+	return nil
 }
 
 func main() {
 	loadEnv()
 
+	okfRepoPath := flag.String("okf", "", "Path to the target repository to scan and generate OKF v0.1 documentation for")
 	ticketPath := flag.String("ticket", "", "Path to the incident ticket JSON file")
 	repoPath := flag.String("repo", "", "Path to the target repository")
 	runsDir := flag.String("runs-dir", "", "Path to the runs directory to store reports")
 	enablePR := flag.Bool("pr", false, "Create a Git branch, push, and open a PR if successful")
 	flag.Parse()
+
+	// If --okf flag is specified, run the documentation indexer and exit
+	if *okfRepoPath != "" {
+		err := okf.Generate(*okfRepoPath)
+		if err != nil {
+			log.Fatalf("OKF Generation failed: %v", err)
+		}
+		os.Exit(0)
+	}
 
 	if *ticketPath == "" || *repoPath == "" || *runsDir == "" {
 		log.Println("Error: Missing required arguments.")

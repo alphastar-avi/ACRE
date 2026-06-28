@@ -1,5 +1,5 @@
 {
-  "ticket_id": "ENG-3810",
+  "ticket_id": "ESC_FW-3810",
   "summary": "Internal Server Error on loading the shopping cart page",
   "description": "Users are encountering a 500 Internal Server Error when attempting to view their shopping cart. This issue appears to affect accounts that have existing items saved in their basket from a previous session.",
   "expected_behavior": "The shopping cart page should load successfully, display all saved items, and allow the user to proceed to checkout.",
