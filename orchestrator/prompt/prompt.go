@@ -16,24 +16,59 @@ func Generate(t *ticket.Ticket, repoPath string) string {
 	builder.WriteString("You are a senior software engineer tasked with fixing a bug in the following repository:\n")
 	builder.WriteString(fmt.Sprintf("Repository Path: %s\n\n", repoPath))
 
-	// Look for OKF codebase index context
+	// Look for OKF codebase index context (directory conforming to OKF v0.1 or legacy file)
 	repoName := filepath.Base(repoPath)
-	okfPaths := []string{
-		filepath.Join("OKF", repoName+".md"),
-		filepath.Join("..", "OKF", repoName+".md"),
+	okfDirPaths := []string{
+		filepath.Join("OKF", repoName),
+		filepath.Join("..", "OKF", repoName),
 	}
-	var okfContent string
-	for _, p := range okfPaths {
-		if data, err := os.ReadFile(p); err == nil {
-			okfContent = string(data)
-			break
+	var okfContent strings.Builder
+	var foundOKF bool
+
+	for _, dirPath := range okfDirPaths {
+		info, err := os.Stat(dirPath)
+		if err == nil && info.IsDir() {
+			_ = filepath.Walk(dirPath, func(path string, fileInfo os.FileInfo, walkErr error) error {
+				if walkErr != nil {
+					return walkErr
+				}
+				if !fileInfo.IsDir() && strings.HasSuffix(fileInfo.Name(), ".md") {
+					content, readErr := os.ReadFile(path)
+					if readErr == nil {
+						rel, _ := filepath.Rel(dirPath, path)
+						okfContent.WriteString(fmt.Sprintf("### OKF Document: %s\n", rel))
+						okfContent.Write(content)
+						okfContent.WriteString("\n\n---\n\n")
+						foundOKF = true
+					}
+				}
+				return nil
+			})
+			if foundOKF {
+				break
+			}
 		}
 	}
 
-	if okfContent != "" {
+	if !foundOKF {
+		okfPaths := []string{
+			filepath.Join("OKF", repoName+".md"),
+			filepath.Join("..", "OKF", repoName+".md"),
+		}
+		for _, p := range okfPaths {
+			if data, err := os.ReadFile(p); err == nil {
+				okfContent.WriteString(string(data))
+				foundOKF = true
+				break
+			}
+		}
+	}
+
+	if foundOKF {
 		builder.WriteString("## Codebase Context & Index (Open Knowledge Format)\n")
-		builder.WriteString("Use this codebase mapping to locate relevant layers, endpoints, services, configurations, and test files quickly. Focus your efforts based on these components:\n")
-		builder.WriteString(okfContent + "\n\n")
+		builder.WriteString("Use this codebase mapping to locate relevant layers, endpoints, services, configurations, and test files quickly. Focus your efforts based on these components:\n\n")
+		builder.WriteString(okfContent.String())
+		builder.WriteString("\n")
 	}
 
 	builder.WriteString("## Incident Report\n")
