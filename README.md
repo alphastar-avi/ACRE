@@ -17,12 +17,9 @@ An Incident Driven Automatic Code Remediation Engine.
 
 ## Prerequisites
 
-* **OpenCode CLI**: Install via Homebrew:
-  ```bash
-  brew install opencode
-  ```
-* **.NET SDK** (version 10.0 or later)
-* **Go compiler** (version 1.20 or later)
+* **Go compiler** (version 1.20 or later, required to build ACRE)
+* **LLM Coding CLI**: OpenCode (install via `brew install opencode`), Codex, or ClaudCode
+* **Target SDK**: .NET SDK (only required for C# repositories), Node.js (for JS/TS), Python, Go, etc.
 
 ## Setup
 
@@ -43,4 +40,12 @@ An Incident Driven Automatic Code Remediation Engine.
    ```bash
    ./acre --okf ../CodeBase/eShop-main
    ```
+
+## Language & CLI Customization
+
+ACRE is designed to be language and tool-agnostic. You can easily adapt it:
+* **LLM CLI**: Swap `opencode` for any other CLI coding assistant (e.g., `codex`, `claudcode`) by modifying the command string inside [orchestrator/opencode/opencode.go](file:///Users/avinash/Desktop/blurr/ACRE/orchestrator/opencode/opencode.go).
+* **Compiling & Building**: Edit the build command parser inside [orchestrator/build/build.go](file:///Users/avinash/Desktop/blurr/ACRE/orchestrator/build/build.go) to target other compilers (e.g. `npm run build`, `make`, `cargo build`).
+* **Regression Testing**: Edit [orchestrator/test/test.go](file:///Users/avinash/Desktop/blurr/ACRE/orchestrator/test/test.go) to target your test runner (e.g. `pytest`, `npm test`, `go test`).
+
 
