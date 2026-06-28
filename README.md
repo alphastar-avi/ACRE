@@ -2,6 +2,8 @@
 
 An Incident Driven Automatic Code Remediation Engine.
 
+<img width="1470" height="220" alt="Screenshot 2026-06-29 at 4 03 01 AM" src="https://github.com/user-attachments/assets/ce4813ad-fe67-4d87-9642-f4d332b3e0a5" />
+
 ## Features
 
 * **Ticket Ingestion**: Loads and parses structured JSON incident reports.
