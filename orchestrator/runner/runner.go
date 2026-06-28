@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"acre/build"
-	"acre/codex"
+	"acre/opencode"
 	"acre/prompt"
 	"acre/report"
 	"acre/test"
@@ -45,25 +45,28 @@ func Run(ticketPath, repoPath, runsDir string) error {
 
 	currentPrompt := p
 	maxRetries := 3
-	var codexOut string
+	var opencodeOut string
 	var buildCode, testCode int
 	var buildOut, buildErr, testOut, testErr string
 	var runSuccess bool
 
+	buildCommand := "dotnet build"
+	testCommand := "dotnet run -- --run-tests"
+
 	// Self-healing loop
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		fmt.Printf("%s[%s]%s %sRemediation Attempt %d/%d%s\n", Cyan, "LOOP", Reset, Bold, attempt, maxRetries, Reset)
-		fmt.Printf("   %sStep A:%s Executing Codex CLI (non-interactive)...\n", Yellow, Reset)
+		fmt.Printf("   %sStep A:%s Executing OpenCode CLI (non-interactive)...\n", Yellow, Reset)
 		
-		codexOut, err = codex.Run(currentPrompt, repoPath)
+		opencodeOut, err = opencode.Run(currentPrompt, repoPath)
 		if err != nil {
-			fmt.Printf("   %s[Warning]%s Codex execution exited with code/error: %v\n", Yellow, Reset, err)
+			fmt.Printf("   %s[Warning]%s OpenCode execution exited with code/error: %v\n", Yellow, Reset, err)
 		} else {
-			fmt.Printf("   %s[Success]%s Codex modification run completed.\n", Green, Reset)
+			fmt.Printf("   %s[Success]%s OpenCode modification run completed.\n", Green, Reset)
 		}
 
 		// Run Build
-		fmt.Printf("   %sStep B:%s Compiling repository (dotnet build)...\n", Yellow, Reset)
+		fmt.Printf("   %sStep B:%s Compiling repository (%s)...\n", Yellow, Reset, buildCommand)
 		buildCode, buildOut, buildErr = build.Run(repoPath)
 		if buildCode != 0 {
 			fmt.Printf("   %s[Fail]%s Build failed with exit code %d.\n", Red, Reset, buildCode)
@@ -76,7 +79,7 @@ func Run(ticketPath, repoPath, runsDir string) error {
 		fmt.Printf("   %s[Success]%s Build succeeded.\n", Green, Reset)
 
 		// Run Tests
-		fmt.Printf("   %sStep C:%s Running regression tests (dotnet run -- --run-tests)...\n", Yellow, Reset)
+		fmt.Printf("   %sStep C:%s Running regression tests (%s)...\n", Yellow, Reset, testCommand)
 		testCode, testOut, testErr = test.Run(repoPath)
 		if testCode != 0 {
 			fmt.Printf("   %s[Fail]%s Tests failed with exit code %d.\n", Red, Reset, testCode)
@@ -103,10 +106,12 @@ func Run(ticketPath, repoPath, runsDir string) error {
 	reportData := report.Data{
 		Ticket:         t,
 		Prompt:         p,
-		CodexOutput:    codexOut,
+		OpenCodeOutput: opencodeOut,
+		BuildCommand:   buildCommand,
 		BuildExitCode:  buildCode,
 		BuildStdout:    buildOut,
 		BuildStderr:    buildErr,
+		TestCommand:    testCommand,
 		TestExitCode:   testCode,
 		TestStdout:     testOut,
 		TestStderr:     testErr,

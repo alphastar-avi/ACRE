@@ -8,7 +8,39 @@ namespace Tests
         {
             ReadsMaxRequestsPerMinuteFromConfiguration();
             EnforcesConfiguredDefaultRouteLimit();
+            LoadsRateLimitFromConfigurationFile();
+            EnforcesRateLimitFromConfiguration();
             Console.WriteLine("Rate limiter regression tests passed.");
+        }
+
+        private static void LoadsRateLimitFromConfigurationFile()
+        {
+            var settings = RateLimitConfiguration.Load();
+
+            Assert(settings.MaxRequestsPerMinute == 50,
+                $"Expected MaxRequestsPerMinute to be 50 from appsettings.json, got {settings.MaxRequestsPerMinute}.");
+            Assert(settings.WindowSeconds == 60,
+                $"Expected WindowSeconds to be 60 from appsettings.json, got {settings.WindowSeconds}.");
+        }
+
+        private static void EnforcesRateLimitFromConfiguration()
+        {
+            var settings = RateLimitConfiguration.Load();
+            var service = new RateLimiterService(settings);
+
+            for (var i = 0; i < 50; i++)
+            {
+                Assert(
+                    service.TryRequest(RateLimiterService.DefaultRouteName),
+                    $"Expected request {i + 1} to be allowed.");
+            }
+
+            for (var i = 0; i < 10; i++)
+            {
+                Assert(
+                    !service.TryRequest(RateLimiterService.DefaultRouteName),
+                    $"Expected request after limit to be throttled.");
+            }
         }
 
         private static void ReadsMaxRequestsPerMinuteFromConfiguration()
