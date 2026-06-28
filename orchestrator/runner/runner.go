@@ -70,8 +70,8 @@ func Run(ticketPath, repoPath, runsDir string, enablePR bool) error {
 	var runSuccess bool
 	var finalPRURL string
 
-	buildCommand := "dotnet build"
-	testCommand := "dotnet run -- --run-tests"
+	buildCommand := build.GetCommandString(repoPath)
+	testCommand := test.GetCommandString(repoPath)
 
 	// Self-healing loop
 	for attempt := 1; attempt <= maxRetries; attempt++ {
@@ -137,15 +137,25 @@ func Run(ticketPath, repoPath, runsDir string, enablePR bool) error {
 
 	// Git Branch and PR operations
 	if enablePR {
+		// Commit and push
+		var commitMsg string
 		if runSuccess {
-			// Commit and push
-			commitMsg := fmt.Sprintf("fix: resolve incident %s", t.TicketID)
-			fmt.Printf("   [Git PR] Committing and pushing changes to branch %s...\n", branchName)
-			if err := github.CommitAndPush(repoPath, branchName, commitMsg); err != nil {
-				fmt.Printf("   %s[Warning]%s Failed to push git changes: %v\n", Yellow, Reset, err)
-			} else {
-				// Construct PR body
-				var prBodyBuilder strings.Builder
+			commitMsg = fmt.Sprintf("fix: resolve incident %s", t.TicketID)
+		} else {
+			commitMsg = fmt.Sprintf("fix: attempt to resolve incident %s (Validation Failed)", t.TicketID)
+		}
+
+		fmt.Printf("   [Git PR] Committing and pushing changes to branch %s...\n", branchName)
+		if err := github.CommitAndPush(repoPath, branchName, commitMsg); err != nil {
+			fmt.Printf("   %s[Warning]%s Failed to push git changes: %v\n", Yellow, Reset, err)
+		} else {
+			// Construct PR body
+			var prBodyBuilder strings.Builder
+			if !runSuccess {
+				prBodyBuilder.WriteString("> [!WARNING]\n> **Verification Validation Failed**: ACRE completed execution, but the compilation build or regression tests failed. Please inspect the code changes below and review the logs.\n\n")
+			}
+
+			if hasDetails {
 				prBodyBuilder.WriteString(fmt.Sprintf("## Understood Issue\n%s\n\n", details.UnderstoodIssue))
 				prBodyBuilder.WriteString(fmt.Sprintf("## Core Root Cause\n%s\n\n", details.PotentialIssue))
 				prBodyBuilder.WriteString(fmt.Sprintf("## Approach Used to Resolve\n%s\n\n", details.Approach))
@@ -162,34 +172,41 @@ func Run(ticketPath, repoPath, runsDir string, enablePR bool) error {
 
 				prBodyBuilder.WriteString(fmt.Sprintf("## Wrote Tests\n* %t\n\n", details.WroteTests))
 				
-				if !details.Solved && details.Recommendations != "" {
-					prBodyBuilder.WriteString(fmt.Sprintf("## Recommendations\n%s\n\n", details.Recommendations))
+				if details.Recommendations != "" {
+					prBodyBuilder.WriteString(fmt.Sprintf("## Recommendations / Diagnostic Notes\n%s\n\n", details.Recommendations))
 				}
-
-				prTitle := fmt.Sprintf("fix: resolve incident %s - %s", t.TicketID, t.Summary)
-				prBody := prBodyBuilder.String()
-
-				fmt.Printf("   [Git PR] Creating pull request from %s to %s...\n", branchName, baseBranch)
-				prURL, manualURL, prErr := github.CreatePR(repoPath, baseBranch, branchName, prTitle, prBody)
-				if prErr != nil {
-					fmt.Printf("   %s[Warning]%s Failed to create pull request via API: %v\n", Yellow, Reset, prErr)
-				}
-				if prURL != "" {
-					finalPRURL = prURL
-					fmt.Printf("\n   %s[Git PR Success]%s Pull request successfully created:\n   %s\n", Green, Reset, prURL)
-				} else {
-					finalPRURL = manualURL
-					fmt.Printf("\n   %s[Git PR]%s No GITHUB_TOKEN configured or API failed. Click the URL below to create the PR manually:\n   %s\n", Yellow, Reset, manualURL)
-				}
+			} else {
+				// Fallback when details are missing (e.g. build failed before writing details)
+				prBodyBuilder.WriteString("## Understood Issue\nACRE loaded the ticket and attempted remediation.\n\n")
+				prBodyBuilder.WriteString("## Core Root Cause\nFailed during compilation or verification tests.\n\n")
+				prBodyBuilder.WriteString("## Approach Used to Resolve\nOpenCode was executed but the codebase did not successfully compile or pass regression tests.\n\n")
+				prBodyBuilder.WriteString("## Recommendations\nCheck the build and test logs in the ACRE runs directory to diagnose the compile/verification errors.\n\n")
 			}
-			// Switch back to base branch
-			_ = github.CheckoutBranch(repoPath, baseBranch)
-		} else {
-			// Failed - revert and delete local branch
-			fmt.Printf("   [Git PR] Cleaning up failed attempt: switching back to %s and deleting branch %s...\n", baseBranch, branchName)
-			_ = github.CheckoutBranch(repoPath, baseBranch)
-			_, _ = github.RunCommand(repoPath, "git", "branch", "-D", branchName)
+
+			var prTitle string
+			if runSuccess {
+				prTitle = fmt.Sprintf("fix: resolve incident %s - %s", t.TicketID, t.Summary)
+			} else {
+				prTitle = fmt.Sprintf("fix: resolve incident %s - %s (Validation Failed)", t.TicketID, t.Summary)
+			}
+
+			prBody := prBodyBuilder.String()
+
+			fmt.Printf("   [Git PR] Creating pull request from %s to %s...\n", branchName, baseBranch)
+			prURL, manualURL, prErr := github.CreatePR(repoPath, baseBranch, branchName, prTitle, prBody)
+			if prErr != nil {
+				fmt.Printf("   %s[Warning]%s Failed to create pull request via API: %v\n", Yellow, Reset, prErr)
+			}
+			if prURL != "" {
+				finalPRURL = prURL
+				fmt.Printf("\n   %s[Git PR Success]%s Pull request successfully created:\n   %s\n", Green, Reset, prURL)
+			} else {
+				finalPRURL = manualURL
+				fmt.Printf("\n   %s[Git PR]%s No GITHUB_TOKEN configured or API failed. Click the URL below to create the PR manually:\n   %s\n", Yellow, Reset, manualURL)
+			}
 		}
+		// Switch back to base branch (keep local branch pushed to remote)
+		_ = github.CheckoutBranch(repoPath, baseBranch)
 	}
 
 	// 6. Report
