@@ -67,3 +67,11 @@ func findSolutionFile(repoPath string) string {
 	}
 	return slnFiles[0]
 }
+
+// GetCommandString returns the command that will be executed for reporting.
+func GetCommandString(repoPath string) string {
+	if sln := findSolutionFile(repoPath); sln != "" {
+		return "dotnet build " + sln
+	}
+	return "dotnet build"
+}
