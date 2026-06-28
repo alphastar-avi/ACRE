@@ -7,11 +7,11 @@ import (
 	"acre/ticket"
 )
 
-// Generate constructs a remediation prompt for Codex based on the ticket details.
+// Generate constructs a remediation prompt for OpenCode based on the ticket details.
 func Generate(t *ticket.Ticket, repoPath string) string {
 	var builder strings.Builder
 
-	builder.WriteString("You are an expert software engineer tasked with fixing a bug in the following repository:\n")
+	builder.WriteString("You are a senior software engineer tasked with fixing a bug in the following repository:\n")
 	builder.WriteString(fmt.Sprintf("Repository Path: %s\n\n", repoPath))
 
 	builder.WriteString("## Incident Report\n")
@@ -38,15 +38,28 @@ func Generate(t *ticket.Ticket, repoPath string) string {
 		builder.WriteString(t.AdditionalNotes + "\n\n")
 	}
 
-	builder.WriteString("## Instructions\n")
-	builder.WriteString("1. Investigate the issue based on the provided incident report.\n")
-	builder.WriteString("2. Determine the probable root cause in the target repository.\n")
-	builder.WriteString("3. Identify the affected files.\n")
-	builder.WriteString("4. Modify the code to fix the issue.\n")
-	builder.WriteString("5. Create or update tests if necessary to prevent regressions.\n")
-	builder.WriteString("6. Minimize unrelated modifications.\n")
-	builder.WriteString("7. Focus only on resolving the reported incident.\n")
-	builder.WriteString("Please execute the necessary changes using the available workspace-write capabilities.\n")
+	builder.WriteString("## Engineering & Implementation Guidelines\n")
+	builder.WriteString("1. **Codebase Style Alignment**: Carefully read and mirror the patterns, indentation (spaces vs tabs), brackets, naming conventions, and programming paradigms already present in the codebase. Change only what is strictly necessary.\n")
+	builder.WriteString("2. **Regression Testing**: If you modify any logic, locate the corresponding test files. Add or update unit/regression tests in the exact style of the existing test files. Run the test suite within the codebase to ensure nothing is broken.\n")
+	builder.WriteString("3. **Senior Engineering Decision-Making**: If running the test suite reveals failures, analyze them carefully. Fix the failures by adjusting *only* the new changes you introduced. Do not modify unrelated, stable parts of the codebase to hide compile or test failures.\n")
+	builder.WriteString("4. **No Hallucinations**: If you cannot locate the files related to the issue, cannot determine a safe way to fix the issue, or find that the issue is already resolved, do not generate fake code or touch unrelated files. Instead, proceed to the reporting step below and indicate that the issue could not be resolved.\n")
+	builder.WriteString("5. **Mandatory Reporting File**: Once you are finished, you MUST create a JSON file named `remediation_details.json` at the root of the repository. Do not leave the workspace without writing this file. It must have the following structure:\n")
+	builder.WriteString("```json\n")
+	builder.WriteString("{\n")
+	builder.WriteString("  \"understood_issue\": \"Detailed explanation of what you understood the issue to be\",\n")
+	builder.WriteString("  \"potential_issue\": \"What you identified as the core root cause of the issue\",\n")
+	builder.WriteString("  \"approach\": \"Detailed explanation of the approach used to fix the issue (or attempt to resolve it)\",\n")
+	builder.WriteString("  \"code_changes\": [\n")
+	builder.WriteString("    {\n")
+	builder.WriteString("      \"file\": \"relative/path/to/modified/file.cs\",\n")
+	builder.WriteString("      \"description\": \"Detailed description of modifications made to this file\"\n")
+	builder.WriteString("    }\n")
+	builder.WriteString("  ],\n")
+	builder.WriteString("  \"recommendations\": \"Clear recommendations for manual engineering intervention if you were unable to solve the issue\",\n")
+	builder.WriteString("  \"solved\": true, // set to false if you could not solve or safely fix the issue\n")
+	builder.WriteString("  \"wrote_tests\": true // set to true if you created or modified test cases\n")
+	builder.WriteString("}\n")
+	builder.WriteString("```\n")
 
 	return builder.String()
 }
