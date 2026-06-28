@@ -1,9 +1,14 @@
 package runner
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"acre/build"
+	"acre/github"
 	"acre/opencode"
 	"acre/prompt"
 	"acre/report"
@@ -26,7 +31,7 @@ const (
 )
 
 // Run executes the full incident remediation pipeline with self-healing retries.
-func Run(ticketPath, repoPath, runsDir string) error {
+func Run(ticketPath, repoPath, runsDir string, enablePR bool) error {
 	printHeader()
 
 	// 1. Load Ticket
@@ -37,6 +42,20 @@ func Run(ticketPath, repoPath, runsDir string) error {
 	}
 	fmt.Printf("   %sID:%s %s\n", Bold, Reset, t.TicketID)
 	fmt.Printf("   %sSummary:%s %s\n\n", Bold, Reset, t.Summary)
+
+	// Branching integration
+	var baseBranch, branchName string
+	if enablePR {
+		baseBranch, err = github.GetBaseBranch(repoPath)
+		if err != nil {
+			return fmt.Errorf("failed to get active base branch: %w", err)
+		}
+		branchName = t.TicketID // e.g. ENG-0001
+		fmt.Printf("   [Git PR] Creating and checking out branch %s from %s...\n", branchName, baseBranch)
+		if err := github.CreateBranch(repoPath, branchName, baseBranch); err != nil {
+			return fmt.Errorf("failed to create branch %s: %w", err)
+		}
+	}
 
 	// 2. Generate Prompt
 	fmt.Printf("%s[%s]%s Generating initial remediation prompt...\n", Cyan, "2/6", Reset)
@@ -49,6 +68,7 @@ func Run(ticketPath, repoPath, runsDir string) error {
 	var buildCode, testCode int
 	var buildOut, buildErr, testOut, testErr string
 	var runSuccess bool
+	var finalPRURL string
 
 	buildCommand := "dotnet build"
 	testCommand := "dotnet run -- --run-tests"
@@ -101,6 +121,77 @@ func Run(ticketPath, repoPath, runsDir string) error {
 		fmt.Printf("%s[Outcome] Remediation Successfully Completed!%s\n\n", Green, Reset)
 	}
 
+	// 5. Parse remediation_details.json from repo
+	detailsPath := filepath.Join(repoPath, "remediation_details.json")
+	var details report.RemediationDetails
+	hasDetails := false
+
+	if _, err := os.Stat(detailsPath); err == nil {
+		if detailsBytes, readErr := os.ReadFile(detailsPath); readErr == nil {
+			if jsonErr := json.Unmarshal(detailsBytes, &details); jsonErr == nil {
+				hasDetails = true
+			}
+		}
+		_ = os.Remove(detailsPath)
+	}
+
+	// Git Branch and PR operations
+	if enablePR {
+		if runSuccess {
+			// Commit and push
+			commitMsg := fmt.Sprintf("fix: resolve incident %s", t.TicketID)
+			fmt.Printf("   [Git PR] Committing and pushing changes to branch %s...\n", branchName)
+			if err := github.CommitAndPush(repoPath, branchName, commitMsg); err != nil {
+				fmt.Printf("   %s[Warning]%s Failed to push git changes: %v\n", Yellow, Reset, err)
+			} else {
+				// Construct PR body
+				var prBodyBuilder strings.Builder
+				prBodyBuilder.WriteString(fmt.Sprintf("## Understood Issue\n%s\n\n", details.UnderstoodIssue))
+				prBodyBuilder.WriteString(fmt.Sprintf("## Core Root Cause\n%s\n\n", details.PotentialIssue))
+				prBodyBuilder.WriteString(fmt.Sprintf("## Approach Used to Resolve\n%s\n\n", details.Approach))
+
+				prBodyBuilder.WriteString("## Applied Code Changes\n")
+				if len(details.CodeChanges) > 0 {
+					for _, c := range details.CodeChanges {
+						prBodyBuilder.WriteString(fmt.Sprintf("* **File:** `%s` - %s\n", c.File, c.Description))
+					}
+				} else {
+					prBodyBuilder.WriteString("_No files were modified._\n")
+				}
+				prBodyBuilder.WriteString("\n")
+
+				prBodyBuilder.WriteString(fmt.Sprintf("## Wrote Tests\n* %t\n\n", details.WroteTests))
+				
+				if !details.Solved && details.Recommendations != "" {
+					prBodyBuilder.WriteString(fmt.Sprintf("## Recommendations\n%s\n\n", details.Recommendations))
+				}
+
+				prTitle := fmt.Sprintf("fix: resolve incident %s - %s", t.TicketID, t.Summary)
+				prBody := prBodyBuilder.String()
+
+				fmt.Printf("   [Git PR] Creating pull request from %s to %s...\n", branchName, baseBranch)
+				prURL, manualURL, prErr := github.CreatePR(repoPath, baseBranch, branchName, prTitle, prBody)
+				if prErr != nil {
+					fmt.Printf("   %s[Warning]%s Failed to create pull request via API: %v\n", Yellow, Reset, prErr)
+				}
+				if prURL != "" {
+					finalPRURL = prURL
+					fmt.Printf("\n   %s[Git PR Success]%s Pull request successfully created:\n   %s\n", Green, Reset, prURL)
+				} else {
+					finalPRURL = manualURL
+					fmt.Printf("\n   %s[Git PR]%s No GITHUB_TOKEN configured or API failed. Click the URL below to create the PR manually:\n   %s\n", Yellow, Reset, manualURL)
+				}
+			}
+			// Switch back to base branch
+			_ = github.CheckoutBranch(repoPath, baseBranch)
+		} else {
+			// Failed - revert and delete local branch
+			fmt.Printf("   [Git PR] Cleaning up failed attempt: switching back to %s and deleting branch %s...\n", baseBranch, branchName)
+			_ = github.CheckoutBranch(repoPath, baseBranch)
+			_, _ = github.RunCommand(repoPath, "git", "branch", "-D", branchName)
+		}
+	}
+
 	// 6. Report
 	fmt.Printf("%s[%s]%s Packaging final run report...\n", Cyan, "6/6", Reset)
 	reportData := report.Data{
@@ -116,6 +207,9 @@ func Run(ticketPath, repoPath, runsDir string) error {
 		TestStdout:     testOut,
 		TestStderr:     testErr,
 		RepositoryPath: repoPath,
+		Details:        &details,
+		HasDetails:     hasDetails,
+		PullRequestURL: finalPRURL,
 	}
 
 	runDir, err := report.Generate(runsDir, reportData)

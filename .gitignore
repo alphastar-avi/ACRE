@@ -21,3 +21,8 @@ Thumbs.db
 
 # ACRE runs log files
 runs/
+CodeBase/
+
+# Credentials and environment variables
+.env
+*.env
