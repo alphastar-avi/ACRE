@@ -15,6 +15,15 @@ An Incident Driven Automatic Code Remediation Engine.
 * **Robust Credential Loading**: Searches for `.env` files in both the current working directory and directly adjacent to the compiled `acre` binary.
 * **OKF Documentation Generator**: Supports scanning codebases and automatically generating/updating detailed, conformant OKF v0.1 documentation directories under `OKF/` via the `--okf` CLI command.
 
+## Prerequisites
+
+* **OpenCode CLI**: Install via Homebrew:
+  ```bash
+  brew install opencode
+  ```
+* **.NET SDK** (version 10.0 or later)
+* **Go compiler** (version 1.20 or later)
+
 ## Setup
 
 1. Configure credentials inside a `.env` file right next to the binary or at the root:
