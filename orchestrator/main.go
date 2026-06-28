@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"acre/okf"
 	"acre/runner"
 )
 
@@ -50,11 +51,21 @@ func parseEnvFile(path string) error {
 func main() {
 	loadEnv()
 
+	okfRepoPath := flag.String("okf", "", "Path to the target repository to scan and generate OKF v0.1 documentation for")
 	ticketPath := flag.String("ticket", "", "Path to the incident ticket JSON file")
 	repoPath := flag.String("repo", "", "Path to the target repository")
 	runsDir := flag.String("runs-dir", "", "Path to the runs directory to store reports")
 	enablePR := flag.Bool("pr", false, "Create a Git branch, push, and open a PR if successful")
 	flag.Parse()
+
+	// If --okf flag is specified, run the documentation indexer and exit
+	if *okfRepoPath != "" {
+		err := okf.Generate(*okfRepoPath)
+		if err != nil {
+			log.Fatalf("OKF Generation failed: %v", err)
+		}
+		os.Exit(0)
+	}
 
 	if *ticketPath == "" || *repoPath == "" || *runsDir == "" {
 		log.Println("Error: Missing required arguments.")
