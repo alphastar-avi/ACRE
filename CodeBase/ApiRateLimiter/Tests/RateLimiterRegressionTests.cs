@@ -1,4 +1,5 @@
 using Services;
+using ApiRateLimiter.Cli;
 
 namespace Tests
 {
@@ -8,6 +9,7 @@ namespace Tests
         {
             ReadsMaxRequestsPerMinuteFromConfiguration();
             EnforcesConfiguredDefaultRouteLimit();
+            CliReturnsToPromptWhenCounterLimitIsEmpty();
             Console.WriteLine("Rate limiter regression tests passed.");
         }
 
@@ -54,6 +56,35 @@ namespace Tests
             Assert(
                 !service.TryRequest(RateLimiterService.DefaultRouteName),
                 "Expected request 51 to be throttled.");
+        }
+
+        private static void CliReturnsToPromptWhenCounterLimitIsEmpty()
+        {
+            var originalIn = Console.In;
+            var originalOut = Console.Out;
+            var output = new StringWriter();
+
+            try
+            {
+                Console.SetIn(new StringReader("add\nroute-a\n\nexit\n"));
+                Console.SetOut(output);
+
+                ApiRateLimiterCli.Start(new RateLimiterService());
+            }
+            finally
+            {
+                Console.SetIn(originalIn);
+                Console.SetOut(originalOut);
+            }
+
+            var text = output.ToString();
+
+            Assert(
+                text.Contains("Error: Limit is required"),
+                "Expected empty limit input to display an error.");
+            Assert(
+                text.Contains("Exiting application..."),
+                "Expected CLI to return to the main prompt after empty limit input.");
         }
 
         private static void Assert(bool condition, string message)

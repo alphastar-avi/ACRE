@@ -1,13 +1,15 @@
 {
   "ticket_id": "ENG-0001",
-  "summary": "Fix rate limit configuration parsing",
-  "description": "The ApiRateLimiter does not correctly parse the rate limit from configuration, causing it to fall back to a default value.",
-  "expected_behavior": "Rate limiter should read the maximum requests per minute from the configuration and enforce it.",
-  "actual_behavior": "Rate limiter ignores the configuration and uses a hardcoded default.",
+  "summary": "Application crashes when configuring rate limit with empty inputs",
+  "description": "Users are unable to successfully configure route limits in the CLI because leaving the limit input empty causes the entire application to crash. This disrupts the configuration workflow.",
+  "expected_behavior": "The application should prompt for a limit and gracefully handle empty inputs by displaying an error message, returning the user to the main command prompt rather than crashing.",
+  "actual_behavior": "Pressing Enter on the 'Limit' input prompt terminates the CLI session with a system crash.",
   "steps_to_reproduce": [
-    "Configure rate limit to 50 in appsettings.json",
-    "Send 60 requests in 1 minute",
-    "Observe that requests after 50 are not throttled if the hardcoded limit is higher"
+    "Launch the rate limiter application",
+    "Type 'add' to create a counter route",
+    "Provide any name and press Enter",
+    "Press Enter without typing a limit",
+    "Observe the application crash and exit"
   ],
-  "additional_notes": "Please check RateLimiterService.cs or configuration initialization."
+  "additional_notes": "Please update the command-line interface input handling to support empty input validation gracefully."
 }

@@ -78,11 +78,8 @@ namespace ApiRateLimiter.Cli
             Console.Write("Route name: ");
             string? name = Console.ReadLine();
 
-            Console.Write("Limit: ");
-            string? limitInput = Console.ReadLine();
-
-            // Manually removed parsing validation to simulate a crash on empty input
-            int limit = int.Parse(limitInput!);
+            if (!ReadRequiredInt("Limit", out int limit))
+                return;
 
             // try to add route with counter strategy
             bool added = service.AddRoute(name!, limit);
@@ -99,15 +96,11 @@ namespace ApiRateLimiter.Cli
             Console.Write("Route name: ");
             string? name = Console.ReadLine();
 
-            Console.Write("Limit: ");
-            string? limitInput = Console.ReadLine();
+            if (!ReadRequiredInt("Limit", out int limit))
+                return;
 
-            Console.Write("Window (seconds): ");
-            string? windowInput = Console.ReadLine();
-
-            // Manually removed parsing validation to simulate a crash on empty input
-            int limit = int.Parse(limitInput!);
-            int windowSeconds = int.Parse(windowInput!);
+            if (!ReadRequiredInt("Window (seconds)", out int windowSeconds))
+                return;
 
             // try to add route with time strategy
             bool added = service.AddTimeRoute(name!, limit, windowSeconds);
@@ -167,6 +160,27 @@ namespace ApiRateLimiter.Cli
                 PrintError("Route not found");
             else
                 Console.WriteLine("Route Limit resetted");
+        }
+
+        static bool ReadRequiredInt(string label, out int value)
+        {
+            Console.Write($"{label}: ");
+            string? input = Console.ReadLine();
+
+            if (string.IsNullOrWhiteSpace(input))
+            {
+                PrintError($"{label} is required");
+                value = 0;
+                return false;
+            }
+
+            if (!int.TryParse(input.Trim(), out value))
+            {
+                PrintError($"{label} must be a valid number");
+                return false;
+            }
+
+            return true;
         }
 
         // default startup message
