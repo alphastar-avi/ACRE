@@ -4,11 +4,38 @@ import (
 	"flag"
 	"log"
 	"os"
+	"strings"
 
 	"acre/runner"
 )
 
+func loadEnv() {
+	bytes, err := os.ReadFile(".env")
+	if err != nil {
+		return // Ignore if .env doesn't exist
+	}
+	lines := strings.Split(string(bytes), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			key := strings.TrimSpace(parts[0])
+			value := strings.TrimSpace(parts[1])
+			if (strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"")) ||
+				(strings.HasPrefix(value, "'") && strings.HasSuffix(value, "'")) {
+				value = value[1 : len(value)-1]
+			}
+			os.Setenv(key, value)
+		}
+	}
+}
+
 func main() {
+	loadEnv()
+
 	ticketPath := flag.String("ticket", "", "Path to the incident ticket JSON file")
 	repoPath := flag.String("repo", "", "Path to the target repository")
 	runsDir := flag.String("runs-dir", "", "Path to the runs directory to store reports")

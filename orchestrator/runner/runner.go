@@ -68,6 +68,7 @@ func Run(ticketPath, repoPath, runsDir string, enablePR bool) error {
 	var buildCode, testCode int
 	var buildOut, buildErr, testOut, testErr string
 	var runSuccess bool
+	var finalPRURL string
 
 	buildCommand := "dotnet build"
 	testCommand := "dotnet run -- --run-tests"
@@ -174,8 +175,10 @@ func Run(ticketPath, repoPath, runsDir string, enablePR bool) error {
 					fmt.Printf("   %s[Warning]%s Failed to create pull request via API: %v\n", Yellow, Reset, prErr)
 				}
 				if prURL != "" {
+					finalPRURL = prURL
 					fmt.Printf("\n   %s[Git PR Success]%s Pull request successfully created:\n   %s\n", Green, Reset, prURL)
 				} else {
+					finalPRURL = manualURL
 					fmt.Printf("\n   %s[Git PR]%s No GITHUB_TOKEN configured or API failed. Click the URL below to create the PR manually:\n   %s\n", Yellow, Reset, manualURL)
 				}
 			}
@@ -206,6 +209,7 @@ func Run(ticketPath, repoPath, runsDir string, enablePR bool) error {
 		RepositoryPath: repoPath,
 		Details:        &details,
 		HasDetails:     hasDetails,
+		PullRequestURL: finalPRURL,
 	}
 
 	runDir, err := report.Generate(runsDir, reportData)

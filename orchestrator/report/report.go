@@ -42,6 +42,7 @@ type Data struct {
 	RepositoryPath string
 	Details        *RemediationDetails
 	HasDetails     bool
+	PullRequestURL string
 }
 
 // Generate creates a timestamped run directory and saves all artifacts and the final report.
@@ -166,6 +167,10 @@ func Generate(baseRunsDir string, data Data) (string, error) {
 			getResultString(data.TestExitCode),
 			outcome,
 		)
+	}
+
+	if data.PullRequestURL != "" {
+		reportContent += fmt.Sprintf("\n## Git & Pull Request Status\n* **Pull Request Link**: [Create or View Pull Request](%s)\n", data.PullRequestURL)
 	}
 
 	reportPath := filepath.Join(runDir, "remediation_report.md")
