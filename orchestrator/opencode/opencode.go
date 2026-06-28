@@ -1,4 +1,4 @@
-package codex
+package opencode
 
 import (
 	"bytes"
@@ -8,14 +8,14 @@ import (
 	"os/exec"
 )
 
-// Run executes the codex CLI with the given prompt in the target repository.
+// Run executes the opencode CLI with the given prompt in the target repository.
 func Run(prompt string, repoPath string) (string, error) {
-	// Execute the codex command exactly as requested.
+	// Execute the opencode command non-interactively with auto-approvals.
 	cmd := exec.Command(
-		"codex",
-		"exec",
-		"-s", "workspace-write",
-		"-C", repoPath,
+		"opencode",
+		"run",
+		"--dir", repoPath,
+		"--dangerously-skip-permissions",
 		prompt,
 	)
 
@@ -30,7 +30,7 @@ func Run(prompt string, repoPath string) (string, error) {
 	}
 
 	if err != nil {
-		return output, fmt.Errorf("codex execution failed: %w", err)
+		return output, fmt.Errorf("opencode execution failed: %w", err)
 	}
 
 	return output, nil
