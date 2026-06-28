@@ -1,7 +1,6 @@
 package report
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -41,6 +40,8 @@ type Data struct {
 	TestStdout     string
 	TestStderr     string
 	RepositoryPath string
+	Details        *RemediationDetails
+	HasDetails     bool
 }
 
 // Generate creates a timestamped run directory and saves all artifacts and the final report.
@@ -52,21 +53,8 @@ func Generate(baseRunsDir string, data Data) (string, error) {
 		return "", fmt.Errorf("failed to create run directory: %w", err)
 	}
 
-	// 1. Try to read and parse the remediation_details.json file from the repository
-	detailsPath := filepath.Join(data.RepositoryPath, "remediation_details.json")
-	var details RemediationDetails
-	hasDetails := false
-
-	if _, err := os.Stat(detailsPath); err == nil {
-		detailsBytes, readErr := os.ReadFile(detailsPath)
-		if readErr == nil {
-			if jsonErr := json.Unmarshal(detailsBytes, &details); jsonErr == nil {
-				hasDetails = true
-			}
-		}
-		// Clean up the temporary reporting file from the repository
-		_ = os.Remove(detailsPath)
-	}
+	details := data.Details
+	hasDetails := data.HasDetails
 
 	// Save the prompt
 	if err := os.WriteFile(filepath.Join(runDir, "prompt.txt"), []byte(data.Prompt), 0644); err != nil {
