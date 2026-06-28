@@ -16,6 +16,7 @@ func Run(prompt string, repoPath string) (string, error) {
 		"run",
 		"--dir", repoPath,
 		"--dangerously-skip-permissions",
+		"--model", "opencode/big-pickle",
 		prompt,
 	)
 

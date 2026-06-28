@@ -1,13 +1,14 @@
 {
-  "ticket_id": "ENG-0001",
-  "summary": "Fix rate limit configuration parsing",
-  "description": "The ApiRateLimiter does not correctly parse the rate limit from configuration, causing it to fall back to a default value.",
-  "expected_behavior": "Rate limiter should read the maximum requests per minute from the configuration and enforce it.",
-  "actual_behavior": "Rate limiter ignores the configuration and uses a hardcoded default.",
+  "ticket_id": "ENG-3810",
+  "summary": "Internal Server Error on loading the shopping cart page",
+  "description": "Users are encountering a 500 Internal Server Error when attempting to view their shopping cart. This issue appears to affect accounts that have existing items saved in their basket from a previous session.",
+  "expected_behavior": "The shopping cart page should load successfully, display all saved items, and allow the user to proceed to checkout.",
+  "actual_behavior": "The application crashes and displays a server error screen when navigating to the basket view.",
   "steps_to_reproduce": [
-    "Configure rate limit to 50 in appsettings.json",
-    "Send 60 requests in 1 minute",
-    "Observe that requests after 50 are not throttled if the hardcoded limit is higher"
+    "Authenticate with a user account",
+    "Add one or more products to the shopping cart",
+    "Simulate a catalog change or wait for a background session update",
+    "Navigate to the cart page (/Basket/Index) and observe the application failure"
   ],
-  "additional_notes": "Please check RateLimiterService.cs or configuration initialization."
+  "additional_notes": "The issue does not seem to occur on fresh accounts with empty baskets. It appears to trigger under specific data states for existing carts."
 }
