@@ -22,53 +22,55 @@ func Generate(t *ticket.Ticket, repoPath string) string {
 		filepath.Join("OKF", repoName),
 		filepath.Join("..", "OKF", repoName),
 	}
-	var okfContent strings.Builder
+	var okfAbsPath string
+	var indexContent string
 	var foundOKF bool
 
 	for _, dirPath := range okfDirPaths {
 		info, err := os.Stat(dirPath)
 		if err == nil && info.IsDir() {
-			_ = filepath.Walk(dirPath, func(path string, fileInfo os.FileInfo, walkErr error) error {
-				if walkErr != nil {
-					return walkErr
+			abs, err := filepath.Abs(dirPath)
+			if err == nil {
+				okfAbsPath = abs
+				indexPath := filepath.Join(dirPath, "index.md")
+				data, readErr := os.ReadFile(indexPath)
+				if readErr == nil {
+					indexContent = string(data)
+					foundOKF = true
+					break
 				}
-				if !fileInfo.IsDir() && strings.HasSuffix(fileInfo.Name(), ".md") {
-					content, readErr := os.ReadFile(path)
-					if readErr == nil {
-						rel, _ := filepath.Rel(dirPath, path)
-						okfContent.WriteString(fmt.Sprintf("### OKF Document: %s\n", rel))
-						okfContent.Write(content)
-						okfContent.WriteString("\n\n---\n\n")
-						foundOKF = true
-					}
-				}
-				return nil
-			})
-			if foundOKF {
-				break
-			}
-		}
-	}
-
-	if !foundOKF {
-		okfPaths := []string{
-			filepath.Join("OKF", repoName+".md"),
-			filepath.Join("..", "OKF", repoName+".md"),
-		}
-		for _, p := range okfPaths {
-			if data, err := os.ReadFile(p); err == nil {
-				okfContent.WriteString(string(data))
-				foundOKF = true
-				break
 			}
 		}
 	}
 
 	if foundOKF {
 		builder.WriteString("## Codebase Context & Index (Open Knowledge Format)\n")
-		builder.WriteString("Use this codebase mapping to locate relevant layers, endpoints, services, configurations, and test files quickly. Focus your efforts based on these components:\n\n")
-		builder.WriteString(okfContent.String())
-		builder.WriteString("\n")
+		builder.WriteString("This codebase uses the Open Knowledge Format (OKF) v0.1 to manage architectural and domain knowledge.\n")
+		builder.WriteString(fmt.Sprintf("The absolute path to the OKF documentation folder on this system is: %s\n\n", okfAbsPath))
+		builder.WriteString("### Root index.md Document:\n")
+		builder.WriteString("```markdown\n")
+		builder.WriteString(indexContent)
+		builder.WriteString("\n```\n\n")
+		builder.WriteString("### 📖 OKF Progressive Disclosure Guidelines:\n")
+		builder.WriteString("To ensure efficiency, minimize token cost, and prevent context lag, use the following strategy to discover and read documentation:\n")
+		builder.WriteString("1. **Analyze the Root Index**: Start by reviewing the `Navigation Graph` and `Key Entry Points` in the `index.md` above to identify which documentation concept files might be relevant to the bug.\n")
+		builder.WriteString("2. **Inspect YAML Metadata First**: The documentation concept files are located in the directory path provided above. Each file begins with a YAML frontmatter metadata block containing `type`, `title`, `description`, `resource` and `tags`.\n")
+		builder.WriteString("   Before reading an entire file, use your file reading tool to view only the first 10-15 lines of a candidate file to check its metadata block. For example, read the top lines of `basket_flow.md` or `testing.md` to see if it matches your target area.\n")
+		builder.WriteString("3. **Disclose on Demand**: If and only if the metadata confirms the file is highly relevant to the problem (e.g. describes the flow or layers where the bug occurred, or contains specific build/test instructions), proceed to read the rest of the file. Otherwise, skip it to keep the context clean.\n\n")
+	} else {
+		// Fallback to legacy single file OKF if directory/index.md isn't found
+		okfPaths := []string{
+			filepath.Join("OKF", repoName+".md"),
+			filepath.Join("..", "OKF", repoName+".md"),
+		}
+		for _, p := range okfPaths {
+			if data, err := os.ReadFile(p); err == nil {
+				builder.WriteString("## Codebase Context & Index (Open Knowledge Format)\n")
+				builder.WriteString(string(data))
+				builder.WriteString("\n")
+				break
+			}
+		}
 	}
 
 	builder.WriteString("## Incident Report\n")
