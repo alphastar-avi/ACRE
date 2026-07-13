@@ -1,6 +1,8 @@
 # Go build outputs
 orchestrator/acre
 orchestrator/acre.exe
+JiraExtractor/jira
+JiraExtractor/jira.exe
 *.exe
 *.exe~
 *.dll
