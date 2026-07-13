@@ -35,12 +35,23 @@ jobs:
       - name: Build Binary
         run: |
           mkdir -p dist
+          
+          # Build ACRE
           BINARY_NAME="acre"
           if [ "${{ matrix.goos }}" = "windows" ]; then
             BINARY_NAME="acre.exe"
           fi
           cd orchestrator
           env GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o ../dist/acre-${{ matrix.goos }}-${{ matrix.goarch }}-${BINARY_NAME} main.go
+          cd ..
+          
+          # Build Jira Extractor
+          JIRA_BINARY_NAME="jira"
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            JIRA_BINARY_NAME="jira.exe"
+          fi
+          cd "JiraExtractor"
+          env GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o ../dist/jira-${{ matrix.goos }}-${{ matrix.goarch }}-${JIRA_BINARY_NAME} main.go
 
       - name: Create Release
         uses: softprops/action-gh-release@v2

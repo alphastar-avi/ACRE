@@ -50,4 +50,25 @@ ACRE is designed to be language and tool-agnostic. You can easily adapt it:
 * **Compiling & Building**: Edit the build command parser inside [orchestrator/build/build.go](file:///Users/avinash/Desktop/blurr/ACRE/orchestrator/build/build.go) to target other compilers (e.g. `npm run build`, `make`, `cargo build`).
 * **Regression Testing**: Edit [orchestrator/test/test.go](file:///Users/avinash/Desktop/blurr/ACRE/orchestrator/test/test.go) to target your test runner (e.g. `pytest`, `npm test`, `go test`).
 
+## Jira Extractor
+
+A CLI utility under `JiraExtractor` to download and structure incident tickets from Jira:
+
+### Setup
+Configure the following inside your `.env` file:
+```env
+JIRA_PAT=your_jira_personal_access_token
+JIRA_BASE_URL=https://jira.example.com
+```
+
+### Usage
+Build and run the extractor:
+```bash
+cd "JiraExtractor"
+go build -o jira main.go
+./jira -ticket <TICKET_ID>
+```
+This generates `<TICKET_ID>.json` with structured ticket fields (summary, description, acceptance criteria, and sorted comments) in the current directory and prints them to stdout.
+
+
 
