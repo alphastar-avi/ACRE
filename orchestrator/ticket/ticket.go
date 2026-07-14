@@ -6,15 +6,19 @@ import (
 	"os"
 )
 
+type Comment struct {
+	Created string `json:"created"`
+	Author  string `json:"author"`
+	Body    string `json:"body"`
+}
+
 // Ticket represents the structure of an incident ticket JSON.
 type Ticket struct {
-	TicketID          string   `json:"ticket_id"`
-	Summary           string   `json:"summary"`
-	Description       string   `json:"description"`
-	ExpectedBehavior  string   `json:"expected_behavior"`
-	ActualBehavior    string   `json:"actual_behavior"`
-	StepsToReproduce  []string `json:"steps_to_reproduce"`
-	AdditionalNotes   string   `json:"additional_notes"`
+	TicketID           string    `json:"ticket_id"`
+	Summary            string    `json:"summary"`
+	Description        string    `json:"description"`
+	AcceptanceCriteria string    `json:"acceptance_criteria"`
+	Comments           []Comment `json:"comments"`
 }
 
 // Load reads and parses a ticket JSON file.

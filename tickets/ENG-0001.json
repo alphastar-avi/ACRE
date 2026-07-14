@@ -1,14 +1,28 @@
 {
-  "ticket_id": "ESC_FW-3810",
-  "summary": "Internal Server Error on loading the shopping cart page",
-  "description": "Users are encountering a 500 Internal Server Error when attempting to view their shopping cart. This issue appears to affect accounts that have existing items saved in their basket from a previous session.",
-  "expected_behavior": "The shopping cart page should load successfully, display all saved items, and allow the user to proceed to checkout.",
-  "actual_behavior": "The application crashes and displays a server error screen when navigating to the basket view.",
-  "steps_to_reproduce": [
-    "Authenticate with a user account",
-    "Add one or more products to the shopping cart",
-    "Simulate a catalog change or wait for a background session update",
-    "Navigate to the cart page (/Basket/Index) and observe the application failure"
-  ],
-  "additional_notes": "The issue does not seem to occur on fresh accounts with empty baskets. It appears to trigger under specific data states for existing carts."
+  "ticket_id": "FWS-66621",
+  "summary": "Investigate DENT Nielsen MIT SFTP Delivery vs DENT Clearance Reporting Discrepancies (Client 2946)",
+  "description": "*{color:#000000}User Story:{color}* As a Product Manager, I want to validate that Nielsen National MIT data deliveries to client SFTP folders align with DENT clearances and delivery configurations, so that clients receive the correct Nielsen National data and DENT reporting can be relied upon for troubleshooting and support.\r\n----\r\nh3. Problem Statement\r\n\r\nThe various Nielsen National (MIT) data types are delivered to FTP, SFTP, and FSX based on DENT configurations. During review of Client {*}2946 (CoreMedia - A. Eicoff & Company){*}, discrepancies were identified between a DENT clearance report and the files currently present within the client's SFTP folder structure.\r\n\r\nAt this time it is unclear whether:\r\n * The DENT report/query being used is incorrect or incomplete.\r\n * DENT delivery configuration is incorrect.\r\n * The delivery process is failing to place updated files.\r\n * Some combination of the above is occurring.\r\n\r\nFor this investigation, confirmation of *SFTP delivery behavior only* is sufficient.\r\n\r\n \r\n\r\n*Reference Material:* Attached is the original DENT clearance report provided by Mike Blissett that was used to identify the discrepancies described below (see only {color:#de350b}2 red tabs; _the non-red tabs are from Shukura filtering data{color}_). Engineering should use this report as the baseline when validating client entitlements versus actual SFTP deliveries. \r\n----\r\nh3. Example Findings (Client 2946)\r\n\r\nAccording to a DENT report provided by Mike Blissett, Client 2946 is cleared for the following Nielsen National datasets.\r\n||DENT Data Service||SFTP Folder||Actual Result||\r\n|Nielsen MIT Cable|NHI/Standard|202606 data missing|\r\n|Nielsen MIT NSS|NSS/Standard|June files present but appear {color:#de350b}outdated {color}(6/15 timestamp). Expected latest 6/30 files|\r\n|Nielsen MIT NTI|NTI/Standard|202606 {color:#de350b}data missing{color}|\r\n|Nielsen NHIH|NHI/Hispanic/Combined|202606 {color:#de350b}data missing{color}|\r\n|Nielsen NHIH Big Data|NHIBD/Hispanic|202606 data present with 6/30 timestamp ({color:#00875a}expected{color})|\r\n|Nielsen MIT Big Data NSS|NSSBD/Standard|June files present but appear {color:#de350b}outdated {color}(6/15 timestamp). Expected latest 6/30 files|\r\n----\r\nh3. Additional Discrepancies\r\n\r\nThe following datasets do {*}not appear on the DENT clearance report{*}, however corresponding folders and data are present under client folder 2946:\r\n||Dataset||Folder||Actual Result||\r\n|Nielsen MIT Cable Big Data|NHIBD/Standard|202606 data present with 6/30 timestamp|\r\n|Nielsen MIT NTI Big Data|NTIBD/Standard|202606 data present with 6/30 timestamp|\r\n\r\nQuestions:\r\n # Why is data being delivered when the associated clearance is not shown in DENT reporting?\r\n # Is the DENT report incomplete, using incorrect logic, or sourcing data differently than delivery processing?\r\n\r\n \r\nDoes Dent’s FSX delivery logic properly respect all-market rules the same way the FTP delivery option does? For example, for an all-market Nielsen client, no Nielsen data is copied to the client’s individual FTP folder. However, initial investigation suggests that the FSX delivery logic *does* copy Nielsen data to the client’s individual FSX directory.\r\n \r\nWe need the FSX delivery behavior to follow the same rules as FTP delivery and {*}exclude all-market Nielsen data from being copied to client-specific FSX folders{*}.\r\n \r\n----\r\nh3. Additional Context\r\n\r\nSFTP client folder *2946/National* currently contains:\r\n * Cable (legacy structure)\r\n * TV (legacy structure)\r\n * NHI\r\n * NHIBD\r\n * NSS\r\n * NSSBD\r\n * NTI\r\n * NTIBD\r\n\r\nThe *Cable* and *TV* folders represent the legacy MIT delivery structure.\r\n\r\nThe new delivery structure consists of:\r\n * NHI\r\n * NHIBD\r\n * NSS\r\n * NSSBD\r\n * NTI\r\n * NTIBD\r\n\r\nAs part of the FTP retirement effort, the new folder structure becomes the only supported structure beginning {*}8/15/2026{*}.\r\n\r\nThis ticket uses Client 2946 as a representative example. Determining the root cause here should provide insight into whether other MIT-cleared clients may also have missing deliveries, outdated deliveries, unexpected deliveries, or inaccurate DENT reporting.\r\n----\r\nh3. Investigation Tasks\r\n * Validate whether the DENT report accurately reflects client MIT clearances.\r\n * Validate whether actual SFTP deliveries align with configured clearances.\r\n * Identify any discrepancies between entitlement reporting and delivery behavior.\r\n * Determine the source of truth for MIT clearances and delivery configuration.",
+  "acceptance_criteria": "",
+  "comments": [
+    {
+      "created": "2026-07-07T22:26:39.000+0000",
+      "author": "Shukura Acosta-Worth",
+      "body": "[~glokesh] [~sramalingam] A client has noticed another scenario. On FTP the National/Syndication folder is setup as:\r\n\r\n - Syndication/NSS/Big Data\r\n - Syndication NSS_ACM/Big Data\r\n\r\nHowever this structure is not followed when data is delivered to client folder 5949 on FTP.\r\n\r\n - Syndication/Big Data\r\n - Syndication/NSS\r\n - Syndication NSS_ACM\r\n\r\n*As of 7/7 I manually fixed this, but would like to know how DENT is configured and what is preventing the consistent structure (i.e., the main National/Syndication structure). The client is concerned and would like Strata/CIOC to resolve this before the next delivery is placed.\r\n\r\ncc: [~jquaid]"
+    },
+    {
+      "created": "2026-07-08T04:47:35.000+0000",
+      "author": "Gire Lokesh",
+      "body": "Started working on this issue"
+    },
+    {
+      "created": "2026-07-10T11:31:24.000+0000",
+      "author": "Gire Lokesh",
+      "body": "[~SWorth]\r\n\r\nRegarding FTP, we identified the destination path for the transferred files as {{{}J:\\National\\NHI\\Hispanic\\Combined\\202606{}}}. However, we are currently unable to locate the corresponding server to access this path and validate the files.\r\n\r\nCould you please help us understand how users are validating FTP-delivered files (e.g., which server / tool they use to access the {{J:}} location)?"
+    },
+    {
+      "created": "2026-07-13T10:50:40.000+0000",
+      "author": "Gire Lokesh",
+      "body": "[~SWorth]\r\n\r\nI have validated this issue. When I check the Replace Existing Files tab in DENT Delivery, I can see that the files are updated. I verified this for all clients listed in the description for SFTP.\r\n\r\nWithout checking the Replace Existing Files tab, the files are not updated.\r\n\r\nFor your reference, I have attached a screenshot showing the updated files.\r\n\r\nIf anything else is required, please let me know."
+    }
+  ]
 }
