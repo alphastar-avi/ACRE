@@ -28,6 +28,7 @@ An Incident Driven Automatic Code Remediation Engine.
 1. Configure credentials inside a `.env` file right next to the binary or at the root:
    ```env
    GITHUB_TOKEN=your_personal_access_token
+   OPENCODE_MODEL=your_custom_model_name  # Optional. Defaults to "opencode/big-pickle" if not set.
    ```
 2. Build the orchestrator:
    ```bash
