@@ -28,6 +28,7 @@ An Incident Driven Automatic Code Remediation Engine.
 1. Configure credentials inside a `.env` file right next to the binary or at the root:
    ```env
    GITHUB_TOKEN=your_personal_access_token
+   OPENCODE_MODEL=your_custom_model_name  # Optional. Defaults to "opencode/big-pickle" if not set.
    ```
 2. Build the orchestrator:
    ```bash
@@ -41,6 +42,10 @@ An Incident Driven Automatic Code Remediation Engine.
 4. Run the orchestrator to generate OKF v0.1 documentation for a repository:
    ```bash
    ./acre --okf ../CodeBase/eShop-main
+   ```
+   To focus documentation scanning and indexing on a specific module subdirectory instead of the entire codebase, add the `--scope` parameter:
+   ```bash
+   ./acre --okf ../CodeBase/eShop-main --scope src/Services/Basket
    ```
 
 ## Language & CLI Customization
