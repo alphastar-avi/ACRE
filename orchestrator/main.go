@@ -53,6 +53,7 @@ func main() {
 	loadEnv()
 
 	okfRepoPath := flag.String("okf", "", "Path to the target repository to scan and generate OKF v0.1 documentation for")
+	okfScope := flag.String("scope", "", "Optional relative path within the repository to focus OKF documentation scanning on (e.g. src/Services/Basket)")
 	ticketPath := flag.String("ticket", "", "Path to the incident ticket JSON file")
 	repoPath := flag.String("repo", "", "Path to the target repository")
 	runsDir := flag.String("runs-dir", "", "Path to the runs directory to store reports")
@@ -66,7 +67,7 @@ func main() {
 
 	// If --okf flag is specified, run the documentation indexer and exit
 	if *okfRepoPath != "" {
-		err := okf.Generate(*okfRepoPath)
+		err := okf.Generate(*okfRepoPath, *okfScope)
 		if err != nil {
 			log.Fatalf("OKF Generation failed: %v", err)
 		}

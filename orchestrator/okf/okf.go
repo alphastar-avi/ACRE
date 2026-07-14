@@ -10,7 +10,7 @@ import (
 )
 
 // Generate runs the OKF documentation pipeline for a repository.
-func Generate(repoPath string) error {
+func Generate(repoPath string, scope string) error {
 	repoAbs, err := filepath.Abs(repoPath)
 	if err != nil {
 		return fmt.Errorf("invalid repository path: %w", err)
@@ -18,9 +18,12 @@ func Generate(repoPath string) error {
 
 	repoName := filepath.Base(repoAbs)
 	fmt.Printf("🔍 Scanning repository: %s\n", repoAbs)
+	if scope != "" {
+		fmt.Printf("   Focus Scope: %s\n", scope)
+	}
 	fmt.Printf("   Generating OKF v0.1 index under OKF/%s...\n\n", repoName)
 
-	prompt := findAndLoadOKFPrompt(repoName)
+	prompt := findAndLoadOKFPrompt(repoName, scope)
 
 	fmt.Println("🤖 Executing OpenCode to analyze the codebase and generate OKF files...")
 	out, err := opencode.Run(prompt, repoAbs)
@@ -88,9 +91,12 @@ func Generate(repoPath string) error {
 	return nil
 }
 
-func constructOKFPrompt(repoName string) string {
+func constructOKFPrompt(repoName string, scope string) string {
 	var builder strings.Builder
 	builder.WriteString("You are a senior software engineer and architect tasked with indexing the codebase in this repository and generating documentation conforming to the Open Knowledge Format (OKF) v0.1 specification.\n\n")
+	if scope != "" {
+		builder.WriteString(fmt.Sprintf("### Focus Scope:\n- Focus codebase scanning and OKF document generation on the module path: '%s' under the repository root.\n\n", scope))
+	}
 	builder.WriteString("### OKF v0.1 Requirements:\n")
 	builder.WriteString("1. Create a directory named `OKF` at the root of the repository.\n")
 	builder.WriteString("2. Every file inside the `OKF` directory must be a markdown file (`.md`) representing a single 'concept' (e.g. layers, specific flows, testing guidelines, entity models).\n")
@@ -121,14 +127,14 @@ func constructOKFPrompt(repoName string) string {
 	return builder.String()
 }
 
-func findAndLoadOKFPrompt(repoName string) string {
+func findAndLoadOKFPrompt(repoName string, scope string) string {
 	// 1. Look in current directory and walk up
 	dir, err := os.Getwd()
 	if err == nil {
 		for {
 			promptPath := filepath.Join(dir, "prompts", "GenerateOKF_prompt.md")
 			if data, err := os.ReadFile(promptPath); err == nil {
-				return replaceRepoPlaceholder(string(data), repoName)
+				return replaceRepoPlaceholder(string(data), repoName, scope)
 			}
 			parent := filepath.Dir(dir)
 			if parent == dir {
@@ -144,20 +150,27 @@ func findAndLoadOKFPrompt(repoName string) string {
 		// Check prompts/GenerateOKF_prompt.md next to exe
 		promptPath := filepath.Join(exeDir, "prompts", "GenerateOKF_prompt.md")
 		if data, err := os.ReadFile(promptPath); err == nil {
-			return replaceRepoPlaceholder(string(data), repoName)
+			return replaceRepoPlaceholder(string(data), repoName, scope)
 		}
 		// Check ../prompts/GenerateOKF_prompt.md relative to exe
 		promptPath = filepath.Join(exeDir, "..", "prompts", "GenerateOKF_prompt.md")
 		if data, err := os.ReadFile(promptPath); err == nil {
-			return replaceRepoPlaceholder(string(data), repoName)
+			return replaceRepoPlaceholder(string(data), repoName, scope)
 		}
 	}
 
 	fmt.Fprintln(os.Stderr, "Warning: prompts/GenerateOKF_prompt.md not found. Falling back to built-in OKF prompt.")
-	return constructOKFPrompt(repoName)
+	return constructOKFPrompt(repoName, scope)
 }
 
-func replaceRepoPlaceholder(content string, repoName string) string {
+func replaceRepoPlaceholder(content string, repoName string, scope string) string {
 	content = strings.ReplaceAll(content, "<ModuleName>", repoName)
+	var scopeIns string
+	if scope == "" {
+		scopeIns = "Scan the entire repository root to document all core layers and workflows."
+	} else {
+		scopeIns = fmt.Sprintf("Focus your scanning and document generation/updating on the module path: '%s' (relative to the repository root). Ensure that the repository's main OKF/index.md and OKF/log.md are updated to include, link, and document this module's concepts, keeping the navigation graph connected.", scope)
+	}
+	content = strings.ReplaceAll(content, "<ScopeInstructions>", scopeIns)
 	return content
 }

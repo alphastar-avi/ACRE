@@ -43,6 +43,10 @@ An Incident Driven Automatic Code Remediation Engine.
    ```bash
    ./acre --okf ../CodeBase/eShop-main
    ```
+   To focus documentation scanning and indexing on a specific module subdirectory instead of the entire codebase, add the `--scope` parameter:
+   ```bash
+   ./acre --okf ../CodeBase/eShop-main --scope src/Services/Basket
+   ```
 
 ## Language & CLI Customization
 
