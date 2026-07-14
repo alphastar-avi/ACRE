@@ -4,6 +4,7 @@ import (
 	"flag"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -57,6 +58,11 @@ func main() {
 	runsDir := flag.String("runs-dir", "", "Path to the runs directory to store reports")
 	enablePR := flag.Bool("pr", false, "Create a Git branch, push, and open a PR if successful")
 	flag.Parse()
+
+	// Check if opencode is installed in system PATH
+	if _, err := exec.LookPath("opencode"); err != nil {
+		log.Fatalf("Error: 'opencode' executable not found in system PATH. ACRE requires the OpenCode CLI to be installed. Please install it first (e.g. 'brew install opencode').")
+	}
 
 	// If --okf flag is specified, run the documentation indexer and exit
 	if *okfRepoPath != "" {
