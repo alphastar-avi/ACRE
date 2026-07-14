@@ -58,6 +58,7 @@ func main() {
 	repoPath := flag.String("repo", "", "Path to the target repository")
 	runsDir := flag.String("runs-dir", "", "Path to the runs directory to store reports")
 	enablePR := flag.Bool("pr", false, "Create a Git branch, push, and open a PR if successful")
+	enableRecs := flag.Bool("r", false, "Analyze codebase, identify root cause, write structured recommendations report, and open a PR without changing codebase files")
 	flag.Parse()
 
 	// Check if opencode is installed in system PATH
@@ -80,7 +81,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	err := runner.Run(*ticketPath, *repoPath, *runsDir, *enablePR)
+	err := runner.Run(*ticketPath, *repoPath, *runsDir, *enablePR, *enableRecs)
 	if err != nil {
 		log.Fatalf("ACRE execution failed: %v", err)
 	}

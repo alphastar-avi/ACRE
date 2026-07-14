@@ -10,7 +10,7 @@ import (
 )
 
 // Generate constructs a remediation prompt for OpenCode based on the ticket details.
-func Generate(t *ticket.Ticket, repoPath string) string {
+func Generate(t *ticket.Ticket, repoPath string, enableRecs bool) string {
 	var builder strings.Builder
 
 	builder.WriteString("You are a senior software engineer tasked with fixing a bug in the following repository:\n")
@@ -94,13 +94,17 @@ func Generate(t *ticket.Ticket, repoPath string) string {
 	}
 
 	builder.WriteString("## Engineering & Implementation Guidelines\n")
-	builder.WriteString("1. **Codebase Style Alignment**: Carefully read and mirror the patterns, indentation (spaces vs tabs), brackets, naming conventions, and programming paradigms already present in the codebase. Change only what is strictly necessary.\n")
-	builder.WriteString("2. **Regression Testing**: If you modify any logic, locate the corresponding test files. Add or update unit/regression tests in the exact style of the existing test files. Run the test suite within the codebase to ensure nothing is broken.\n")
-	builder.WriteString("3. **Senior Engineering Decision-Making**: If running the test suite reveals failures, analyze them carefully. Fix the failures by adjusting *only* the new changes you introduced. Do not modify unrelated, stable parts of the codebase to hide compile or test failures.\n")
-	builder.WriteString("4. **No Hallucinations**: If you cannot locate the files related to the issue, cannot determine a safe way to fix the issue, or find that the issue is already resolved, do not generate fake code or touch unrelated files. Instead, proceed to the reporting step below and indicate that the issue could not be resolved.\n")
-	builder.WriteString("5. **Backend Focus & Diagnostic Scoping**: 90% of the time, the root cause of these reported issues resides in the backend/server-side logic, controllers, configurations, models, routing, or data parsing. Do not make hypothetical or cosmetic frontend view/HTML/CSS changes unless it is explicitly clear the issue originates there. Focus your diagnostic investigations and modifications on backend business logic and services.\n")
-	builder.WriteString("6. **Minimizing Test Modifications**: Do not modify or create new test files if the existing test suite is already sufficient to catch regressions, or if no new test coverage is explicitly requested. Only modify test files if you are adding new functionality that requires new test cases, or if existing test assertions are outdated. Avoid changing tests unnecessarily.\n")
-	builder.WriteString("7. **Mandatory Reporting File**: Once you are finished, you MUST create a JSON file named `remediation_details.json` at the root of the repository. Do not leave the workspace without writing this file. It must have the following structure:\n")
+	if enableRecs {
+		builder.WriteString("1. **RECOMMENDATIONS-ONLY Mode**: Do NOT modify or edit any source files in the repository. Your sole task is to analyze the codebase, diagnose the root cause, design a potential fix, and write the details to `remediation_details.json`.\n")
+		builder.WriteString("2. **Detailed Analysis**: In your JSON report, describe in detail the files that *should* be changed and the specific edits needed under the `code_changes` list.\n")
+	} else {
+		builder.WriteString("1. **Codebase Style Alignment**: Carefully read and mirror the patterns, indentation (spaces vs tabs), brackets, naming conventions, and programming paradigms already present in the codebase. Change only what is strictly necessary.\n")
+		builder.WriteString("2. **Regression Testing**: If you modify any logic, locate the corresponding test files. Add or update unit/regression tests in the exact style of the existing test files. Run the test suite within the codebase to ensure nothing is broken.\n")
+	}
+	builder.WriteString("3. **Senior Engineering Decision-Making**: Analyze compilation/test patterns carefully. Do not introduce hypothetical or cosmetic frontend/HTML/CSS changes unless it is explicitly clear the issue originates there. Focus on backend business logic and services.\n")
+	builder.WriteString("4. **No Hallucinations**: If you cannot locate the files related to the issue, cannot determine a safe way to fix the issue, or find that the issue is already resolved, indicate that in the report details.\n")
+	builder.WriteString("5. **Confidence Rating**: You must assess your diagnosis and potential fix with a confidence score (from 0 to 100) and provide a short justification in the report.\n")
+	builder.WriteString("6. **Mandatory Reporting File**: Once you are finished, you MUST create a JSON file named `remediation_details.json` at the root of the repository. Do not leave the workspace without writing this file. It must have the following structure:\n")
 	builder.WriteString("```json\n")
 	builder.WriteString("{\n")
 	builder.WriteString("  \"understood_issue\": \"Detailed explanation of what you understood the issue to be\",\n")
@@ -109,10 +113,12 @@ func Generate(t *ticket.Ticket, repoPath string) string {
 	builder.WriteString("  \"code_changes\": [\n")
 	builder.WriteString("    {\n")
 	builder.WriteString("      \"file\": \"relative/path/to/modified/file.cs\",\n")
-	builder.WriteString("      \"description\": \"Detailed description of modifications made to this file\"\n")
+	builder.WriteString("      \"description\": \"Detailed description of modifications made or needed for this file\"\n")
 	builder.WriteString("    }\n")
 	builder.WriteString("  ],\n")
 	builder.WriteString("  \"recommendations\": \"Clear recommendations for manual engineering intervention if you were unable to solve the issue\",\n")
+	builder.WriteString("  \"confidence_score\": 90, // integer percentage representing your confidence in the diagnosis and fix (0 to 100)\n")
+	builder.WriteString("  \"confidence_justification\": \"A short, concise justification for your confidence score\",\n")
 	builder.WriteString("  \"solved\": true, // set to false if you could not solve or safely fix the issue\n")
 	builder.WriteString("  \"wrote_tests\": true // set to true if you created or modified test cases\n")
 	builder.WriteString("}\n")

@@ -31,7 +31,7 @@ const (
 )
 
 // Run executes the full incident remediation pipeline with self-healing retries.
-func Run(ticketPath, repoPath, runsDir string, enablePR bool) error {
+func Run(ticketPath, repoPath, runsDir string, enablePR, enableRecs bool) error {
 	printHeader()
 
 	// 1. Load Ticket
@@ -45,7 +45,8 @@ func Run(ticketPath, repoPath, runsDir string, enablePR bool) error {
 
 	// Branching integration
 	var baseBranch, branchName string
-	if enablePR {
+	shouldCreatePR := enablePR || enableRecs
+	if shouldCreatePR {
 		baseBranch, err = github.GetBaseBranch(repoPath)
 		if err != nil {
 			return fmt.Errorf("failed to get active base branch: %w", err)
@@ -59,7 +60,7 @@ func Run(ticketPath, repoPath, runsDir string, enablePR bool) error {
 
 	// 2. Generate Prompt
 	fmt.Printf("%s[%s]%s Generating initial remediation prompt...\n", Cyan, "2/6", Reset)
-	p := prompt.Generate(t, repoPath)
+	p := prompt.Generate(t, repoPath, enableRecs)
 	fmt.Printf("   Initial prompt generated (%d chars).\n\n", len(p))
 
 	currentPrompt := p
@@ -73,52 +74,67 @@ func Run(ticketPath, repoPath, runsDir string, enablePR bool) error {
 	buildCommand := build.GetCommandString(repoPath)
 	testCommand := test.GetCommandString(repoPath)
 
-	// Self-healing loop
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		fmt.Printf("%s[%s]%s %sRemediation Attempt %d/%d%s\n", Cyan, "LOOP", Reset, Bold, attempt, maxRetries, Reset)
-		fmt.Printf("   %sStep A:%s Executing OpenCode CLI (non-interactive)...\n", Yellow, Reset)
-		
+	if enableRecs {
+		fmt.Printf("   %sStep A:%s Executing OpenCode CLI for analysis (recommendations only)...\n", Yellow, Reset)
 		opencodeOut, err = opencode.Run(currentPrompt, repoPath)
 		if err != nil {
 			fmt.Printf("   %s[Warning]%s OpenCode execution exited with code/error: %v\n", Yellow, Reset, err)
 		} else {
-			fmt.Printf("   %s[Success]%s OpenCode modification run completed.\n", Green, Reset)
+			fmt.Printf("   %s[Success]%s OpenCode analysis run completed.\n", Green, Reset)
 		}
-
-		// Run Build
-		fmt.Printf("   %sStep B:%s Compiling repository (%s)...\n", Yellow, Reset, buildCommand)
-		buildCode, buildOut, buildErr = build.Run(repoPath)
-		if buildCode != 0 {
-			fmt.Printf("   %s[Fail]%s Build failed with exit code %d.\n", Red, Reset, buildCode)
-			
-			// Provide feedback for self-healing
-			currentPrompt = fmt.Sprintf("%s\n\n## Feedback (Attempt %d)\nYour previous modification failed to build with the following error:\n```\n%s\n%s\n```\nPlease correct your modification to resolve this build error.", p, attempt, buildOut, buildErr)
-			fmt.Printf("   %s[Self-Healing]%s Appended build errors. Retrying...\n\n", Magenta, Reset)
-			continue
-		}
-		fmt.Printf("   %s[Success]%s Build succeeded.\n", Green, Reset)
-
-		// Run Tests
-		fmt.Printf("   %sStep C:%s Running regression tests (%s)...\n", Yellow, Reset, testCommand)
-		testCode, testOut, testErr = test.Run(repoPath)
-		if testCode != 0 {
-			fmt.Printf("   %s[Fail]%s Tests failed with exit code %d.\n", Red, Reset, testCode)
-			
-			// Provide feedback for self-healing
-			currentPrompt = fmt.Sprintf("%s\n\n## Feedback (Attempt %d)\nYour previous modification successfully built, but tests failed with the following output:\n```\n%s\n%s\n```\nPlease adjust your modifications to pass the regression tests.", p, attempt, testOut, testErr)
-			fmt.Printf("   %s[Self-Healing]%s Appended test failures. Retrying...\n\n", Magenta, Reset)
-			continue
-		}
-
-		fmt.Printf("   %s[Success]%s All tests passed!\n\n", Green, Reset)
 		runSuccess = true
-		break
+	} else {
+		// Self-healing loop
+		for attempt := 1; attempt <= maxRetries; attempt++ {
+			fmt.Printf("%s[%s]%s %sRemediation Attempt %d/%d%s\n", Cyan, "LOOP", Reset, Bold, attempt, maxRetries, Reset)
+			fmt.Printf("   %sStep A:%s Executing OpenCode CLI (non-interactive)...\n", Yellow, Reset)
+			
+			opencodeOut, err = opencode.Run(currentPrompt, repoPath)
+			if err != nil {
+				fmt.Printf("   %s[Warning]%s OpenCode execution exited with code/error: %v\n", Yellow, Reset, err)
+			} else {
+				fmt.Printf("   %s[Success]%s OpenCode modification run completed.\n", Green, Reset)
+			}
+
+			// Run Build
+			fmt.Printf("   %sStep B:%s Compiling repository (%s)...\n", Yellow, Reset, buildCommand)
+			buildCode, buildOut, buildErr = build.Run(repoPath)
+			if buildCode != 0 {
+				fmt.Printf("   %s[Fail]%s Build failed with exit code %d.\n", Red, Reset, buildCode)
+				
+				// Provide feedback for self-healing
+				currentPrompt = fmt.Sprintf("%s\n\n## Feedback (Attempt %d)\nYour previous modification failed to build with the following error:\n```\n%s\n%s\n```\nPlease correct your modification to resolve this build error.", p, attempt, buildOut, buildErr)
+				fmt.Printf("   %s[Self-Healing]%s Appended build errors. Retrying...\n\n", Magenta, Reset)
+				continue
+			}
+			fmt.Printf("   %s[Success]%s Build succeeded.\n", Green, Reset)
+
+			// Run Tests
+			fmt.Printf("   %sStep C:%s Running regression tests (%s)...\n", Yellow, Reset, testCommand)
+			testCode, testOut, testErr = test.Run(repoPath)
+			if testCode != 0 {
+				fmt.Printf("   %s[Fail]%s Tests failed with exit code %d.\n", Red, Reset, testCode)
+				
+				// Provide feedback for self-healing
+				currentPrompt = fmt.Sprintf("%s\n\n## Feedback (Attempt %d)\nYour previous modification successfully built, but tests failed with the following output:\n```\n%s\n%s\n```\nPlease adjust your modifications to pass the regression tests.", p, attempt, testOut, testErr)
+				fmt.Printf("   %s[Self-Healing]%s Appended test failures. Retrying...\n\n", Magenta, Reset)
+				continue
+			}
+
+			fmt.Printf("   %s[Success]%s All tests passed!\n\n", Green, Reset)
+			runSuccess = true
+			break
+		}
 	}
 
 	if !runSuccess {
 		fmt.Printf("%s[Outcome] Remediation Failed after %d attempts.%s\n\n", Red, maxRetries, Reset)
 	} else {
-		fmt.Printf("%s[Outcome] Remediation Successfully Completed!%s\n\n", Green, Reset)
+		if enableRecs {
+			fmt.Printf("%s[Outcome] Recommendations Gathering Completed!%s\n\n", Green, Reset)
+		} else {
+			fmt.Printf("%s[Outcome] Remediation Successfully Completed!%s\n\n", Green, Reset)
+		}
 	}
 
 	// 5. Parse remediation_details.json from repo
@@ -136,20 +152,66 @@ func Run(ticketPath, repoPath, runsDir string, enablePR bool) error {
 	}
 
 	// Git Branch and PR operations
-	if enablePR {
-		// Commit and push
+	if shouldCreatePR {
 		var commitMsg string
-		if runSuccess {
-			commitMsg = fmt.Sprintf("fix: resolve incident %s", t.TicketID)
-		} else {
-			commitMsg = fmt.Sprintf("fix: attempt to resolve incident %s (Validation Failed)", t.TicketID)
-		}
+		var prTitle string
+		var prBody string
 
-		fmt.Printf("   [Git PR] Committing and pushing changes to branch %s...\n", branchName)
-		if err := github.CommitAndPush(repoPath, branchName, commitMsg); err != nil {
-			fmt.Printf("   %s[Warning]%s Failed to push git changes: %v\n", Yellow, Reset, err)
+		if enableRecs {
+			// 1. Discard codebase source file modifications
+			fmt.Printf("   [Git PR] Discarding codebase source file modifications (recommendations mode)...\n")
+			_, _ = github.RunCommand(repoPath, "git", "checkout", "--", ".")
+			_, _ = github.RunCommand(repoPath, "git", "clean", "-fd")
+
+			// 2. Generate structured report file recommendations.md at root of target repository
+			var builder strings.Builder
+			builder.WriteString("# ACRE Incident Analysis & Recommendations\n\n")
+			builder.WriteString("## Ticket Information\n")
+			builder.WriteString(fmt.Sprintf("* **Ticket ID:** %s\n", t.TicketID))
+			builder.WriteString(fmt.Sprintf("* **Summary:** %s\n\n", t.Summary))
+			builder.WriteString("### Description\n")
+			builder.WriteString(t.Description + "\n\n")
+			if t.AcceptanceCriteria != "" {
+				builder.WriteString("### Acceptance Criteria\n")
+				builder.WriteString(t.AcceptanceCriteria + "\n\n")
+			}
+
+			builder.WriteString("## OpenCode Incident Analysis\n")
+			if hasDetails {
+				builder.WriteString(fmt.Sprintf("* **Confidence Score:** %d/100\n", details.ConfidenceScore))
+				builder.WriteString(fmt.Sprintf("* **Justification:** %s\n\n", details.ConfidenceJustification))
+				builder.WriteString(fmt.Sprintf("### Understanding of the Issue\n%s\n\n", details.UnderstoodIssue))
+				builder.WriteString(fmt.Sprintf("### Core Root Cause Identified\n%s\n\n", details.PotentialIssue))
+				builder.WriteString(fmt.Sprintf("### Potential Approach to Fix\n%s\n\n", details.Approach))
+				builder.WriteString("### Concise Clear Code Changes Needed\n")
+				if len(details.CodeChanges) > 0 {
+					for _, c := range details.CodeChanges {
+						builder.WriteString(fmt.Sprintf("* **File:** `%s`\n  * **Change:** %s\n", c.File, c.Description))
+					}
+				} else {
+					builder.WriteString("_No files were marked for modification._\n")
+				}
+				if details.Recommendations != "" {
+					builder.WriteString(fmt.Sprintf("\n### Extra Recommendations\n%s\n", details.Recommendations))
+				}
+			} else {
+				builder.WriteString("> [!WARNING]\n> Analysis failed. OpenCode did not write `remediation_details.json`.\n")
+			}
+
+			recsFilePath := filepath.Join(repoPath, "recommendations.md")
+			_ = os.WriteFile(recsFilePath, []byte(builder.String()), 0644)
+
+			commitMsg = fmt.Sprintf("docs: add incident recommendations for %s", t.TicketID)
+			prTitle = fmt.Sprintf("docs: recommendations for incident %s - %s", t.TicketID, t.Summary)
+			prBody = builder.String()
 		} else {
-			// Construct PR body
+			// Normal flow
+			if runSuccess {
+				commitMsg = fmt.Sprintf("fix: resolve incident %s", t.TicketID)
+			} else {
+				commitMsg = fmt.Sprintf("fix: attempt to resolve incident %s (Validation Failed)", t.TicketID)
+			}
+
 			var prBodyBuilder strings.Builder
 			if !runSuccess {
 				prBodyBuilder.WriteString("> [!WARNING]\n> **Verification Validation Failed**: ACRE completed execution, but the compilation build or regression tests failed. Please inspect the code changes below and review the logs.\n\n")
@@ -183,15 +245,18 @@ func Run(ticketPath, repoPath, runsDir string, enablePR bool) error {
 				prBodyBuilder.WriteString("## Recommendations\nCheck the build and test logs in the ACRE runs directory to diagnose the compile/verification errors.\n\n")
 			}
 
-			var prTitle string
 			if runSuccess {
 				prTitle = fmt.Sprintf("fix: resolve incident %s - %s", t.TicketID, t.Summary)
 			} else {
 				prTitle = fmt.Sprintf("fix: resolve incident %s - %s (Validation Failed)", t.TicketID, t.Summary)
 			}
+			prBody = prBodyBuilder.String()
+		}
 
-			prBody := prBodyBuilder.String()
-
+		fmt.Printf("   [Git PR] Committing and pushing changes to branch %s...\n", branchName)
+		if err := github.CommitAndPush(repoPath, branchName, commitMsg); err != nil {
+			fmt.Printf("   %s[Warning]%s Failed to push git changes: %v\n", Yellow, Reset, err)
+		} else {
 			fmt.Printf("   [Git PR] Creating pull request from %s to %s...\n", branchName, baseBranch)
 			prURL, manualURL, prErr := github.CreatePR(repoPath, baseBranch, branchName, prTitle, prBody)
 			if prErr != nil {

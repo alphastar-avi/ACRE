@@ -36,9 +36,14 @@ An Incident Driven Automatic Code Remediation Engine.
    go build -o acre main.go
    ```
 3. Run the orchestrator on a target repository:
-   ```bash
-   ./acre --ticket ../tickets/ENG-0001.json --repo ../CodeBase/eShop-main --runs-dir ../runs --pr
-   ```
+   - **Remediation Mode (with auto-PR)**: Modifies files, compiles, runs tests, self-heals, and opens a PR with actual code changes:
+     ```bash
+     ./acre --ticket ../tickets/ENG-0001.json --repo ../CodeBase/eShop-main --runs-dir ../runs --pr
+     ```
+   - **Recommendations Mode (no code changes)**: Analyzes codebase, discards source code modifications, generates a structured analysis report (`recommendations.md`) with a confidence score/justification, commits only the report, and opens a PR with details:
+     ```bash
+     ./acre --ticket ../tickets/ENG-0001.json --repo ../CodeBase/eShop-main --runs-dir ../runs -r
+     ```
 4. Run the orchestrator to generate OKF v0.1 documentation for a repository:
    ```bash
    ./acre --okf ../CodeBase/eShop-main
