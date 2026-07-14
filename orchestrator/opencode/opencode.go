@@ -16,9 +16,10 @@ func Run(prompt string, repoPath string) (string, error) {
 	}
 
 	model := os.Getenv("OPENCODE_MODEL")
-	if model == "" {
-		model = "opencode/big-pickle"
-	}
+	// fallback
+	// if model == "" {
+	// 	model = "opencode/big-pickle"
+	// }
 
 	// Execute the opencode command non-interactively with auto-approvals.
 	cmd := exec.Command(

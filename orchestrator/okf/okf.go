@@ -20,7 +20,7 @@ func Generate(repoPath string) error {
 	fmt.Printf("🔍 Scanning repository: %s\n", repoAbs)
 	fmt.Printf("   Generating OKF v0.1 index under OKF/%s...\n\n", repoName)
 
-	prompt := constructOKFPrompt(repoName)
+	prompt := findAndLoadOKFPrompt(repoName)
 
 	fmt.Println("🤖 Executing OpenCode to analyze the codebase and generate OKF files...")
 	out, err := opencode.Run(prompt, repoAbs)
@@ -119,4 +119,45 @@ func constructOKFPrompt(repoName string) string {
 	builder.WriteString("- Make sure your descriptions of directories, controllers, services, database contexts, and test scopes are highly accurate. Do not guess or hallucinate components.\n")
 	builder.WriteString("- Write the complete set of markdown files inside the `OKF/` directory before exiting. Do not output code modifications to other files, only write files inside the new `OKF/` directory.\n")
 	return builder.String()
+}
+
+func findAndLoadOKFPrompt(repoName string) string {
+	// 1. Look in current directory and walk up
+	dir, err := os.Getwd()
+	if err == nil {
+		for {
+			promptPath := filepath.Join(dir, "prompts", "GenerateOKF_prompt.md")
+			if data, err := os.ReadFile(promptPath); err == nil {
+				return replaceRepoPlaceholder(string(data), repoName)
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
+		}
+	}
+
+	// 2. Try next to executable
+	if exePath, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exePath)
+		// Check prompts/GenerateOKF_prompt.md next to exe
+		promptPath := filepath.Join(exeDir, "prompts", "GenerateOKF_prompt.md")
+		if data, err := os.ReadFile(promptPath); err == nil {
+			return replaceRepoPlaceholder(string(data), repoName)
+		}
+		// Check ../prompts/GenerateOKF_prompt.md relative to exe
+		promptPath = filepath.Join(exeDir, "..", "prompts", "GenerateOKF_prompt.md")
+		if data, err := os.ReadFile(promptPath); err == nil {
+			return replaceRepoPlaceholder(string(data), repoName)
+		}
+	}
+
+	fmt.Fprintln(os.Stderr, "Warning: prompts/GenerateOKF_prompt.md not found. Falling back to built-in OKF prompt.")
+	return constructOKFPrompt(repoName)
+}
+
+func replaceRepoPlaceholder(content string, repoName string) string {
+	content = strings.ReplaceAll(content, "<ModuleName>", repoName)
+	return content
 }

@@ -7,7 +7,7 @@ You are an expert technical writer and software architecture agent. Your task is
 ## Task Instructions
 
 ### 1. Goal
-Analyze the target codebase and generate/update an OKF bundle under the directory `OKF/<ModuleName>/` (e.g. `OKF/eShop-main/`). The generated bundle must help both human developers and downstream AI agents quickly understand the codebase layout, key architectural layers, execution flows, and build/test environments.
+Analyze the target codebase and generate/update an OKF bundle under the directory `OKF/` at the root of the repository (e.g. `OKF/index.md`). The generated bundle must help both human developers and downstream AI agents quickly understand the codebase layout, key architectural layers, execution flows, and build/test environments.
 
 ### 2. Specification Compliance (OKF v0.1)
 Your generated files must strictly follow the OKF v0.1 standard:
@@ -29,9 +29,9 @@ Your generated files must strictly follow the OKF v0.1 standard:
 
 ## Structure of the OKF Bundle
 
-Ensure the following directory structure is created and maintained at the root of the OKF directory:
+Ensure the following directory structure is created and maintained under the `OKF` directory at the root of the repository:
 ```
-OKF/<ModuleName>/
+OKF/
 ├── index.md                      # Root Index, lists navigation graph and specifies OKF version.
 ├── log.md                        # Chronological history of updates, newest first.
 ├── architecture.md               # Codebase architecture layers, patterns, and boundaries.
