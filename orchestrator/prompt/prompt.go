@@ -80,21 +80,17 @@ func Generate(t *ticket.Ticket, repoPath string) string {
 	builder.WriteString("### Description\n")
 	builder.WriteString(t.Description + "\n\n")
 
-	builder.WriteString("### Expected Behavior\n")
-	builder.WriteString(t.ExpectedBehavior + "\n\n")
-
-	builder.WriteString("### Actual Behavior\n")
-	builder.WriteString(t.ActualBehavior + "\n\n")
-
-	builder.WriteString("### Steps to Reproduce\n")
-	for i, step := range t.StepsToReproduce {
-		builder.WriteString(fmt.Sprintf("%d. %s\n", i+1, step))
+	if t.AcceptanceCriteria != "" {
+		builder.WriteString("### Acceptance Criteria\n")
+		builder.WriteString(t.AcceptanceCriteria + "\n\n")
 	}
-	builder.WriteString("\n")
 
-	if t.AdditionalNotes != "" {
-		builder.WriteString("### Additional Notes\n")
-		builder.WriteString(t.AdditionalNotes + "\n\n")
+	if len(t.Comments) > 0 {
+		builder.WriteString("### Comments & Discussion (Oldest to Newest)\n")
+		for _, comment := range t.Comments {
+			builder.WriteString(fmt.Sprintf("- **%s** (%s):\n  %s\n", comment.Author, comment.Created, comment.Body))
+		}
+		builder.WriteString("\n")
 	}
 
 	builder.WriteString("## Engineering & Implementation Guidelines\n")
