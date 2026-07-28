@@ -39,7 +39,7 @@ OKF/
 ├── log.md                        # Chronological history of updates, newest first.
 ├── architecture.md               # Codebase architecture layers, patterns, and boundaries.
 ├── testing.md                    # Detailed guide on building, running tests, and test suites.
-└── [additional-concepts].md      # Workflows (e.g. basket_flow.md), database schemas, tables, etc.
+└── [additional-concepts].md      # Workflows (e.g. core_flow.md), database schemas, tables, etc.
 ```
 
 ---
@@ -49,7 +49,7 @@ OKF/
 ### Step 1: Scan and Discover Codebase Structure
 - Identify the programming languages, framework versions, build systems (e.g. .NET solution files, package.json, go.mod), and testing tools.
 - Identify the architectural layers (e.g., Domain, Application, Infrastructure, Presentation/API).
-- Map out the primary business logic execution flows (e.g. Order placement, Auth flow, Basket/Cart lifecycle).
+- Map out the primary business logic execution flows (e.g. Order processing, Auth flow, Core business lifecycle).
 
 ### Step 2: Establish the Documentation Index & Navigation Graph
 - Generate/update the root `index.md` file at the root of the OKF bundle.
@@ -68,7 +68,7 @@ OKF/
 - **Agent Traversal Instructions**: 
   Right below the title heading, write a clear, descriptive instruction mapping how other AI agents should consume and traverse the OKF documentation. Explain that:
   - This document acts as the entrypoint for parsing the codebase module structure.
-  - Consuming agents must read the items in the `# Navigation Graph` section first to find paths to architectural layouts (`/architecture.md`), testing requirements (`/testing.md`), and transaction lifecycles (e.g. `/basket_flow.md`).
+  - Consuming agents must read the items in the `# Navigation Graph` section first to find paths to architectural layouts (`/architecture.md`), testing requirements (`/testing.md`), and transaction lifecycles (e.g. `/core_flow.md`).
   - Agents must follow cross-links prefixed with `/` (representing bundle-relative paths) to explore connected concepts, data schemas, or playbooks.
 - **Navigation Graph Section**:
   Write a `# Navigation Graph` section. This is a structured list of key concept documents with direct absolute paths (e.g. `[Build & Testing Guide](/testing.md)`) and their one-sentence descriptions.
@@ -76,7 +76,7 @@ OKF/
 ### Step 3: Write Key Concept Documents
 - **`architecture.md`**: Detail the separation of concerns, third-party libraries, folder layouts, and component boundaries.
 - **`testing.md`**: Document the exact CLI commands to restore dependencies, compile/build the source, run unit/integration test suites, and configure environment variables.
-- **Workflow files (e.g., `basket_flow.md`)**: Provide sequence-like steps of how a transaction/workflow processes from the entry point (e.g. API Controller) to database queries.
+- **Workflow files (e.g., `core_flow.md`)**: Provide sequence-like steps of how a transaction/workflow processes from the entry point (e.g. API Controller) to database queries.
 
 ### Step 4: Write/Update the Change Log (`log.md`)
 - Maintain a chronological change log.
@@ -107,17 +107,17 @@ When analyzing code changes to perform documentation updates:
 ```markdown
 ---
 type: Codebase Overview
-title: eShop-main Reference Architecture
-description: Microsoft eShopOnWeb reference ASP.NET Core e-commerce application.
-resource: CodeBase/eShop-main
-tags: [dotnet, eshop, core]
+title: <ModuleName> Reference Architecture
+description: Core module reference architecture.
+resource: src/<ModuleName>
+tags: [dotnet, core, service]
 timestamp: 2026-07-13T22:00:00Z
 okf_version: "0.1"
 ---
 
-# eShop-main Codebase Index
+# <ModuleName> Codebase Index
 
-Welcome to the Open Knowledge Format (OKF) index for the `eShop-main` codebase.
+Welcome to the Open Knowledge Format (OKF) index for the `<ModuleName>` codebase.
 
 ## Consumption & Traversal Instructions for AI Agents
 This index serves as the entrypoint directory listing for consuming agents. 
@@ -129,7 +129,7 @@ This index serves as the entrypoint directory listing for consuming agents.
 ## Navigation Graph
 
 * **[Architecture Layers](/architecture.md)**: Details the design patterns and segregation of responsibilities between presentation, core domain, and infrastructure code.
-* **[Basket Flow Mapping](/basket_flow.md)**: Explains the shopping cart/basket lifecycle and execution flow across ViewModels, Services, Entities, and UI Controllers/Pages.
+* **[Core Flow Mapping](/core_flow.md)**: Explains the primary lifecycle and execution flow across ViewModels, Services, Entities, and UI Controllers/Pages.
 * **[Build & Testing Guide](/testing.md)**: Directs compilation commands and tells agents how to run regression tests against clean solution boundaries.
 ```
 
@@ -138,8 +138,8 @@ This index serves as the entrypoint directory listing for consuming agents.
 # Directory Update Log
 
 ## 2026-07-13
-* **Update**: Refactored the [Build & Testing Guide](/testing.md) to support .NET 8.0 SDK commands.
-* **Creation**: Established the initial [Basket Flow Mapping](/basket_flow.md) overview detailing checkout behaviors.
+* **Update**: Refactored the [Build & Testing Guide](/testing.md) to support SDK compilation commands.
+* **Creation**: Established the initial [Core Flow Mapping](/core_flow.md) overview.
 
 ## 2026-06-29
 * **Initialization**: Created foundational directory structure.
@@ -151,8 +151,8 @@ This index serves as the entrypoint directory listing for consuming agents.
 ---
 type: Architecture Design
 title: Core Architecture Layers
-description: Explanation of clean architecture implementation in eShopOnWeb.
-resource: CodeBase/eShop-main/src
+description: Explanation of architecture implementation.
+resource: src/Core
 tags: [architecture, design-patterns]
 timestamp: 2026-07-13T22:00:00Z
 ---

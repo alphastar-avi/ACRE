@@ -16,6 +16,16 @@ func Generate(repoPath string, scope string) error {
 		return fmt.Errorf("invalid repository path: %w", err)
 	}
 
+	// Normalize scope if provided as an absolute path within repoAbs
+	if scope != "" {
+		if filepath.IsAbs(scope) {
+			rel, err := filepath.Rel(repoAbs, scope)
+			if err == nil && !strings.HasPrefix(rel, "..") {
+				scope = rel
+			}
+		}
+	}
+
 	repoName := filepath.Base(repoAbs)
 	fmt.Printf("🔍 Scanning repository: %s\n", repoAbs)
 	if scope != "" {
@@ -111,13 +121,13 @@ func constructOKFPrompt(repoName string, scope string) string {
 	builder.WriteString("timestamp: 2026-06-29T00:00:00Z\n")
 	builder.WriteString("---\n")
 	builder.WriteString("```\n")
-	builder.WriteString("4. Cross-link between concept files using standard markdown links (e.g., `[Architecture Layers](architecture.md)` or `[Basket Flow](basket_flow.md)`).\n\n")
+	builder.WriteString("4. Cross-link between concept files using standard markdown links (e.g., `[Architecture Layers](architecture.md)` or `[Core Flow](core_flow.md)`).\n\n")
 	
 	builder.WriteString("### Mandatory Files to Generate:\n")
 	builder.WriteString("- **`OKF/index.md`**: Main landing index page linking to all other documentation concepts and explaining key entry points.\n")
 	builder.WriteString("- **`OKF/architecture.md`**: Detailed breakdown of the layers (e.g. Presentation, Core domain, Infrastructure) and core architectural design patterns (Repositories, Dependency Injection, Specification patterns).\n")
 	builder.WriteString("- **`OKF/testing.md`**: Accurate compilation/build instructions, listing solution files (prefer solution files that build without external dependencies like Docker compose), and instructions on executing unit/functional/integration test suites.\n")
-	builder.WriteString("- **Feature-specific mapping files**: Identify the core flows in the codebase (e.g. Basket/Shopping Cart flow, Order/Checkout flow, Authentication, or main business features) and create detailed files for them (e.g., `OKF/basket_flow.md`).\n\n")
+	builder.WriteString("- **Feature-specific mapping files**: Identify the core flows in the codebase (e.g. Core Domain flow, Order processing flow, Authentication, or main business features) and create detailed files for them (e.g., `OKF/core_flow.md`).\n\n")
 
 	builder.WriteString("### Methodology:\n")
 	builder.WriteString("- Take your time. Explore the directory structure carefully.\n")

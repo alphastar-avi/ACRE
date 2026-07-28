@@ -54,8 +54,8 @@ func Generate(t *ticket.Ticket, repoPath string, enableRecs bool) string {
 		builder.WriteString("### 📖 OKF Progressive Disclosure Guidelines:\n")
 		builder.WriteString("To ensure efficiency, minimize token cost, and prevent context lag, use the following strategy to discover and read documentation:\n")
 		builder.WriteString("1. **Analyze the Root Index**: Start by reviewing the `Navigation Graph` and `Key Entry Points` in the `index.md` above to identify which documentation concept files might be relevant to the bug.\n")
-		builder.WriteString("2. **Inspect YAML Metadata First**: The documentation concept files are located in the directory path provided above. Each file begins with a YAML frontmatter metadata block containing `type`, `title`, `description`, `resource` and `tags`.\n")
-		builder.WriteString("   Before reading an entire file, use your file reading tool to view only the first 10-15 lines of a candidate file to check its metadata block. For example, read the top lines of `basket_flow.md` or `testing.md` to see if it matches your target area.\n")
+		builder.WriteString("2. **Inspect Full YAML Metadata Block First**: The documentation concept files are located in the directory path provided above. Each file begins with a YAML frontmatter metadata block delimited by `---` containing `type`, `title`, `description`, `resource` and `tags`.\n")
+		builder.WriteString("   Before reading an entire document body, read the full YAML frontmatter block (between opening and closing `---`) at the top of candidate files (e.g., `core_flow.md` or `testing.md`) to verify its target domain.\n")
 		builder.WriteString("3. **Disclose on Demand**: If and only if the metadata confirms the file is highly relevant to the problem (e.g. describes the flow or layers where the bug occurred, or contains specific build/test instructions), proceed to read the rest of the file. Otherwise, skip it to keep the context clean.\n\n")
 	} else {
 		// Fallback to legacy single file OKF if directory/index.md isn't found
