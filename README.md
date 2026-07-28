@@ -28,29 +28,32 @@ An Incident Driven Automatic Code Remediation Engine.
 1. Configure credentials inside a `.env` file right next to the binary or at the root:
    ```env
    GITHUB_TOKEN=your_personal_access_token
-   OPENCODE_MODEL=your_custom_model_name  # Optional. Defaults to "opencode/big-pickle" if not set.
+   OPENCODE_MODEL=your_custom_model_name  # Optional (e.g. anthropic/claude-3-7-sonnet). If omitted, OpenCode uses its configured default model.
    ```
 2. Build the orchestrator:
    ```bash
    cd orchestrator
    go build -o acre main.go
    ```
-3. Run the orchestrator on a target repository:
    - **Remediation Mode (with auto-PR)**: Modifies files, compiles, runs tests, self-heals, and opens a PR with actual code changes:
      ```bash
-     ./acre --ticket ../tickets/ENG-0001.json --repo ../CodeBase/eShop-main --runs-dir ../runs --pr
+     ./acre --ticket ../tickets/ENG-0001.json --repo /path/to/target/repo --runs-dir ../runs --pr
      ```
    - **Recommendations Mode (no code changes)**: Analyzes codebase, discards source code modifications, generates a structured analysis report (`recommendations.md`) with a confidence score/justification, commits only the report, and opens a PR with details:
      ```bash
-     ./acre --ticket ../tickets/ENG-0001.json --repo ../CodeBase/eShop-main --runs-dir ../runs -r
+     ./acre --ticket ../tickets/ENG-0001.json --repo /path/to/target/repo --runs-dir ../runs -r
      ```
-4. Run the orchestrator to generate OKF v0.1 documentation for a repository:
+   - **Test Mode (`--test`)**: Lightweight diagnostic mode. OpenCode analyzes the codebase for a fix, ACRE executes a full solution compilation check, skips git operations (no branch/commit/push) and regression tests, and outputs a prefilled manual GitHub PR link directly in the console:
+     ```bash
+     ./acre --ticket ../tickets/ENG-0001.json --repo /path/to/target/repo --runs-dir ../runs --test
+     ```
+4. Run the orchestrator to generate OKF v0.1 documentation for a repository (supports relative or absolute full paths):
    ```bash
-   ./acre --okf ../CodeBase/eShop-main
+   ./acre --okf /Users/avinash/Desktop/blurr/CodeBase/eShop-main
    ```
-   To focus documentation scanning and indexing on a specific module subdirectory instead of the entire codebase, add the `--scope` parameter:
+   To focus documentation scanning and indexing on a specific module subdirectory (supports absolute full path or relative repo path), add the `--scope` parameter:
    ```bash
-   ./acre --okf ../CodeBase/eShop-main --scope src/Services/Basket
+   ./acre --okf /Users/avinash/Desktop/blurr/CodeBase/eShop-main --scope /Users/avinash/Desktop/blurr/CodeBase/eShop-main/src/Services/Basket
    ```
 
 ## Language & CLI Customization

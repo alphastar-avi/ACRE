@@ -3,6 +3,7 @@ package runner
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,7 +32,7 @@ const (
 )
 
 // Run executes the full incident remediation pipeline with self-healing retries.
-func Run(ticketPath, repoPath, runsDir string, enablePR, enableRecs bool) error {
+func Run(ticketPath, repoPath, runsDir string, enablePR, enableRecs, enableTest bool) error {
 	printHeader()
 
 	// 1. Load Ticket
@@ -45,7 +46,7 @@ func Run(ticketPath, repoPath, runsDir string, enablePR, enableRecs bool) error 
 
 	// Branching integration
 	var baseBranch, branchName string
-	shouldCreatePR := enablePR || enableRecs
+	shouldCreatePR := (enablePR || enableRecs) && !enableTest
 	if shouldCreatePR {
 		baseBranch, err = github.GetBaseBranch(repoPath)
 		if err != nil {
@@ -56,11 +57,14 @@ func Run(ticketPath, repoPath, runsDir string, enablePR, enableRecs bool) error 
 		if err := github.CreateBranch(repoPath, branchName, baseBranch); err != nil {
 			return fmt.Errorf("failed to create branch %s: %w", err)
 		}
+	} else if enableTest {
+		fmt.Printf("   %s[Test Mode]%s Skipping Git branch creation, checkout, commit, and push.\n\n", Yellow, Reset)
 	}
 
 	// 2. Generate Prompt
 	fmt.Printf("%s[%s]%s Generating initial remediation prompt...\n", Cyan, "2/6", Reset)
-	p := prompt.Generate(t, repoPath, enableRecs)
+	isAnalysisOnly := enableRecs || enableTest
+	p := prompt.Generate(t, repoPath, isAnalysisOnly)
 	fmt.Printf("   Initial prompt generated (%d chars).\n\n", len(p))
 
 	currentPrompt := p
@@ -74,13 +78,26 @@ func Run(ticketPath, repoPath, runsDir string, enablePR, enableRecs bool) error 
 	buildCommand := build.GetCommandString(repoPath)
 	testCommand := test.GetCommandString(repoPath)
 
-	if enableRecs {
-		fmt.Printf("   %sStep A:%s Executing OpenCode CLI for analysis (recommendations only)...\n", Yellow, Reset)
+	if isAnalysisOnly {
+		fmt.Printf("   %sStep A:%s Executing OpenCode CLI for analysis...\n", Yellow, Reset)
 		opencodeOut, err = opencode.Run(currentPrompt, repoPath)
 		if err != nil {
 			fmt.Printf("   %s[Warning]%s OpenCode execution exited with code/error: %v\n", Yellow, Reset, err)
 		} else {
 			fmt.Printf("   %s[Success]%s OpenCode analysis run completed.\n", Green, Reset)
+		}
+
+		// Run solution compilation build
+		fmt.Printf("   %sStep B:%s Compiling repository solution (%s)...\n", Yellow, Reset, buildCommand)
+		buildCode, buildOut, buildErr = build.Run(repoPath)
+		if buildCode != 0 {
+			fmt.Printf("   %s[Fail]%s Solution build failed with exit code %d.\n", Red, Reset, buildCode)
+		} else {
+			fmt.Printf("   %s[Success]%s Solution build succeeded.\n", Green, Reset)
+		}
+
+		if enableTest {
+			fmt.Printf("   %sStep C:%s [Test Mode] Skipping regression tests execution.\n\n", Yellow, Reset)
 		}
 		runSuccess = true
 	} else {
@@ -130,7 +147,9 @@ func Run(ticketPath, repoPath, runsDir string, enablePR, enableRecs bool) error 
 	if !runSuccess {
 		fmt.Printf("%s[Outcome] Remediation Failed after %d attempts.%s\n\n", Red, maxRetries, Reset)
 	} else {
-		if enableRecs {
+		if enableTest {
+			fmt.Printf("%s[Outcome] Test Mode Diagnostics & Solution Build Completed!%s\n\n", Green, Reset)
+		} else if enableRecs {
 			fmt.Printf("%s[Outcome] Recommendations Gathering Completed!%s\n\n", Green, Reset)
 		} else {
 			fmt.Printf("%s[Outcome] Remediation Successfully Completed!%s\n\n", Green, Reset)
@@ -149,6 +168,75 @@ func Run(ticketPath, repoPath, runsDir string, enablePR, enableRecs bool) error 
 			}
 		}
 		_ = os.Remove(detailsPath)
+	}
+
+	// In test mode: Generate prefilled GitHub manual PR URL without performing git operations
+	if enableTest {
+		currBaseBranch, baseErr := github.GetBaseBranch(repoPath)
+		if baseErr != nil {
+			currBaseBranch = "main"
+		}
+
+		var builder strings.Builder
+		builder.WriteString("# ACRE Incident Analysis & Recommendations (Test Mode)\n\n")
+		builder.WriteString("## Ticket Information\n")
+		builder.WriteString(fmt.Sprintf("* **Ticket ID:** %s\n", t.TicketID))
+		builder.WriteString(fmt.Sprintf("* **Summary:** %s\n\n", t.Summary))
+		builder.WriteString("### Description\n")
+		builder.WriteString(t.Description + "\n\n")
+		if t.AcceptanceCriteria != "" {
+			builder.WriteString("### Acceptance Criteria\n")
+			builder.WriteString(t.AcceptanceCriteria + "\n\n")
+		}
+
+		builder.WriteString("## OpenCode Incident Analysis\n")
+		if hasDetails {
+			builder.WriteString(fmt.Sprintf("* **Confidence Score:** %d/100\n", details.ConfidenceScore))
+			builder.WriteString(fmt.Sprintf("* **Justification:** %s\n\n", details.ConfidenceJustification))
+			builder.WriteString(fmt.Sprintf("### Understanding of the Issue\n%s\n\n", details.UnderstoodIssue))
+			builder.WriteString(fmt.Sprintf("### Core Root Cause Identified\n%s\n\n", details.PotentialIssue))
+			builder.WriteString(fmt.Sprintf("### Potential Approach to Fix\n%s\n\n", details.Approach))
+			builder.WriteString("### Concise Clear Code Changes Needed\n")
+			if len(details.CodeChanges) > 0 {
+				for _, c := range details.CodeChanges {
+					builder.WriteString(fmt.Sprintf("* **File:** `%s`\n  * **Change:** %s\n", c.File, c.Description))
+				}
+			} else {
+				builder.WriteString("_No files were marked for modification._\n")
+			}
+			if details.Recommendations != "" {
+				builder.WriteString(fmt.Sprintf("\n### Extra Recommendations\n%s\n", details.Recommendations))
+			}
+		} else {
+			builder.WriteString("> [!WARNING]\n> Analysis completed. OpenCode did not write `remediation_details.json`.\n")
+		}
+
+		builder.WriteString("\n## Solution Build Status\n")
+		if buildCode == 0 {
+			builder.WriteString("✅ Solution compiled successfully.\n")
+		} else {
+			builder.WriteString(fmt.Sprintf("❌ Solution compilation failed with exit code %d.\n", buildCode))
+		}
+
+		prTitle := fmt.Sprintf("docs: recommendations for incident %s - %s", t.TicketID, t.Summary)
+		prBody := builder.String()
+
+		ownerRepo, repoErr := github.GetOwnerRepo(repoPath)
+		if repoErr == nil {
+			finalPRURL = fmt.Sprintf("https://github.com/%s/%s/compare/%s...%s?expand=1&title=%s&body=%s",
+				ownerRepo.Owner,
+				ownerRepo.Repo,
+				url.PathEscape(currBaseBranch),
+				url.PathEscape(t.TicketID),
+				url.QueryEscape(prTitle),
+				url.QueryEscape(prBody),
+			)
+		} else {
+			finalPRURL = fmt.Sprintf("https://github.com/compare?title=%s&body=%s", url.QueryEscape(prTitle), url.QueryEscape(prBody))
+		}
+
+		fmt.Printf("   %s[Test Mode - GitHub PR Link Generated]%s\n", Green, Reset)
+		fmt.Printf("   Prefilled GitHub PR URL:\n   %s\n\n", finalPRURL)
 	}
 
 	// Git Branch and PR operations

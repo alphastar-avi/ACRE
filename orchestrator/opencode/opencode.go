@@ -15,21 +15,20 @@ func Run(prompt string, repoPath string) (string, error) {
 		return "", fmt.Errorf("opencode executable not found in PATH: %w", err)
 	}
 
-	model := os.Getenv("OPENCODE_MODEL")
-	// fallback
-	// if model == "" {
-	// 	model = "opencode/big-pickle"
-	// }
-
-	// Execute the opencode command non-interactively with auto-approvals.
-	cmd := exec.Command(
-		opencodePath,
+	args := []string{
 		"run",
 		"--dir", repoPath,
 		"--dangerously-skip-permissions",
-		"--model", model,
-		prompt,
-	)
+	}
+
+	if model := os.Getenv("OPENCODE_MODEL"); model != "" {
+		args = append(args, "--model", model)
+	}
+
+	args = append(args, prompt)
+
+	// Execute the opencode command non-interactively with auto-approvals.
+	cmd := exec.Command(opencodePath, args...)
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd.Stdout = io.MultiWriter(os.Stdout, &stdoutBuf)
