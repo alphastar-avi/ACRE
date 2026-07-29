@@ -59,6 +59,22 @@ Open Issues
 ╰─────────────────────────────────────────────────────────────────────────────────────╯
 `
 
+const ansiAndAbsPathSample = `
+Testing C:\Users\asivak976\OneDrive - Comcast\Desktop\Concepts\ACRE ...
+
+Open Issues
+
+ \x1b[31m✗ [CRITICAL] SQL Injection\x1b[0m
+   Finding ID: abc-123
+   Path: C:\Users\asivak976\OneDrive - Comcast\Desktop\Concepts\ACRE\src\Data\Repository.cs:88
+   Info: Unsanitized input used in SQL query execution.
+
+ [HIGH] Use of Hardcoded Credentials
+   Finding ID: def-456
+   Path: src/Config/Secrets.cs [line 15]
+   Info: Do not hardcode secrets in code.
+`
+
 func TestParseOutput(t *testing.T) {
 	report := ParseOutput(sampleSnykOutput)
 
@@ -114,6 +130,36 @@ func TestParseOutputUserSample(t *testing.T) {
 	}
 	if issue2.Severity != "MEDIUM" {
 		t.Errorf("Expected MEDIUM severity, got %s", issue2.Severity)
+	}
+}
+
+func TestParseANSIAndAlternativeFormats(t *testing.T) {
+	report := ParseOutput(ansiAndAbsPathSample)
+
+	if len(report.Issues) != 2 {
+		t.Fatalf("Expected 2 issues parsed, got %d", len(report.Issues))
+	}
+
+	crit := report.Issues[0]
+	if crit.Severity != "CRITICAL" {
+		t.Errorf("Expected CRITICAL severity, got %s", crit.Severity)
+	}
+	if crit.LineNumber != 88 {
+		t.Errorf("Expected line 88, got %d", crit.LineNumber)
+	}
+	if crit.Path != "src/Data/Repository.cs" {
+		t.Errorf("Expected trimmed relative path 'src/Data/Repository.cs', got '%s'", crit.Path)
+	}
+
+	high := report.Issues[1]
+	if high.Severity != "HIGH" {
+		t.Errorf("Expected HIGH severity, got %s", high.Severity)
+	}
+	if high.LineNumber != 15 {
+		t.Errorf("Expected line 15, got %d", high.LineNumber)
+	}
+	if high.Path != "src/Config/Secrets.cs" {
+		t.Errorf("Expected path 'src/Config/Secrets.cs', got '%s'", high.Path)
 	}
 }
 

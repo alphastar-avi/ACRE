@@ -8,14 +8,25 @@ import (
 )
 
 var (
-	// Regex matching finding header e.g.: ✗ [LOW] Exposure of Private Personal Information...
-	findingHeaderRegex = regexp.MustCompile(`(?i)(?:✗\s*)?\[(LOW|MEDIUM|HIGH|CRITICAL)\]\s+(.+)`)
-	findingIDRegex     = regexp.MustCompile(`(?i)Finding ID:\s*([a-f0-9\-]+)`)
-	pathWithLineRegex  = regexp.MustCompile(`(?i)^\s*Path:\s*(.+?),\s*line\s*(\d+)\s*$`)
-	pathOnlyRegex      = regexp.MustCompile(`(?i)^\s*Path:\s*(.+)\s*$`)
-	infoRegex          = regexp.MustCompile(`(?i)^\s*Info:\s*(.+)`)
+	ansiEscapeRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 
-	// Regex matching summary table counts
+	// Regex matching finding header e.g.: ✗ [LOW] Path Traversal or [HIGH] Hardcoded Secret
+	findingHeaderRegex = regexp.MustCompile(`(?i)(?:[✗✖!\*x\-]\s*)?\[(LOW|MEDIUM|HIGH|CRITICAL)\]\s+(.+)`)
+	
+	// Finding ID regex
+	findingIDRegex = regexp.MustCompile(`(?i)(?:Finding|Rule)\s*ID:\s*([a-f0-9\-]+|[^\s]+)`)
+
+	// Path & Line patterns:
+	// 1. Path: foo/bar.cs, line 123
+	pathWithLineCommaRegex = regexp.MustCompile(`(?i)^\s*Path:\s*(.+?),\s*(?:line|ln|L)?\s*(\d+)\s*$`)
+	// 2. Path: foo/bar.cs:123 or Path: foo/bar.cs [line 123] or Path: foo/bar.cs (line 123)
+	pathWithLineColonOrBracketRegex = regexp.MustCompile(`(?i)^\s*Path:\s*(.+?)(?::|\s*\[|\s*\()(?:line|ln|L)?\s*(\d+)[\]\)]?\s*$`)
+	// 3. Path: foo/bar.cs
+	pathOnlyRegex = regexp.MustCompile(`(?i)^\s*Path:\s*(.+)\s*$`)
+
+	infoRegex = regexp.MustCompile(`(?i)^\s*Info:\s*(.+)`)
+
+	// Summary box regexes
 	totalIssuesRegex       = regexp.MustCompile(`(?i)Total issues:\s*(\d+)`)
 	openIssuesRegex        = regexp.MustCompile(`(?i)Open issues:\s*(\d+)`)
 	severityBreakdownRegex = regexp.MustCompile(`(?i)(\d+)\s*(HIGH|MEDIUM|LOW|CRITICAL)`)
@@ -34,14 +45,17 @@ func ParseOutput(rawOutput string) *SnykReport {
 		RawOutput: rawOutput,
 	}
 
-	trimmed := strings.TrimSpace(rawOutput)
+	// Strip ANSI color escape codes first to prevent formatting corruption
+	cleanOutput := stripANSIEscapes(rawOutput)
+
+	trimmed := strings.TrimSpace(cleanOutput)
 	if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
 		if parseJSONOutput(trimmed, report) {
 			return report
 		}
 	}
 
-	parsePlainTextOutput(rawOutput, report)
+	parsePlainTextOutput(cleanOutput, report)
 	return report
 }
 
@@ -94,7 +108,7 @@ func parseJSONOutput(rawJSON string, report *SnykReport) bool {
 				FindingID:  jIssue.ID,
 				Severity:   sev,
 				Title:      jIssue.Title,
-				Path:       jIssue.FilePath,
+				Path:       cleanPathStr(jIssue.FilePath, report.ProjectPath),
 				LineNumber: jIssue.Line,
 				Info:       info,
 			})
@@ -113,7 +127,7 @@ func parseJSONOutput(rawJSON string, report *SnykReport) bool {
 					FindingID:  r.RuleID,
 					Severity:   sev,
 					Title:      r.RuleID,
-					Path:       path,
+					Path:       cleanPathStr(path, report.ProjectPath),
 					LineNumber: line,
 					Info:       r.Message.Text,
 				})
@@ -132,14 +146,22 @@ func parsePlainTextOutput(rawOutput string, report *SnykReport) {
 	var rawBlock strings.Builder
 	inInfo := false
 
+	// Extract project path from header e.g. "Testing C:\path\to\repo ..."
+	testingHeaderRegex := regexp.MustCompile(`(?i)^\s*Testing\s+(.+?)(?:\s*\.\.\.)?$`)
+
 	for i := 0; i < len(lines); i++ {
 		line := strings.TrimRight(lines[i], "\r")
 		trimmedLine := strings.TrimSpace(line)
 
-		// Header match e.g. ✗ [LOW] Exposure of Private Personal Information...
+		if match := testingHeaderRegex.FindStringSubmatch(trimmedLine); match != nil {
+			report.ProjectPath = strings.TrimSpace(match[1])
+		}
+
+		// Check if line matches a new finding header: e.g. ✗ [MEDIUM] Server-Side Request Forgery (SSRF)
 		if headerMatch := findingHeaderRegex.FindStringSubmatch(trimmedLine); headerMatch != nil {
 			if currentIssue != nil {
 				currentIssue.RawText = rawBlock.String()
+				currentIssue.Path = cleanPathStr(currentIssue.Path, report.ProjectPath)
 				report.Issues = append(report.Issues, *currentIssue)
 				report.Counts[currentIssue.Severity]++
 			}
@@ -159,16 +181,22 @@ func parsePlainTextOutput(rawOutput string, report *SnykReport) {
 			if match := findingIDRegex.FindStringSubmatch(trimmedLine); match != nil {
 				currentIssue.FindingID = strings.TrimSpace(match[1])
 				inInfo = false
-			} else if match := pathWithLineRegex.FindStringSubmatch(trimmedLine); match != nil {
-				currentIssue.Path = strings.TrimSpace(match[1])
+			} else if match := pathWithLineCommaRegex.FindStringSubmatch(trimmedLine); match != nil {
+				currentIssue.Path = cleanPathStr(match[1], report.ProjectPath)
+				if lNum, err := strconv.Atoi(match[2]); err == nil {
+					currentIssue.LineNumber = lNum
+				}
+				inInfo = false
+			} else if match := pathWithLineColonOrBracketRegex.FindStringSubmatch(trimmedLine); match != nil {
+				currentIssue.Path = cleanPathStr(match[1], report.ProjectPath)
 				if lNum, err := strconv.Atoi(match[2]); err == nil {
 					currentIssue.LineNumber = lNum
 				}
 				inInfo = false
 			} else if match := pathOnlyRegex.FindStringSubmatch(trimmedLine); match != nil {
-				// Only set Path if line starts with Path: and current issue path is empty
+				// Only set path if current issue path is empty
 				if currentIssue.Path == "" {
-					currentIssue.Path = strings.TrimSpace(match[1])
+					currentIssue.Path = cleanPathStr(match[1], report.ProjectPath)
 				}
 				inInfo = false
 			} else if match := infoRegex.FindStringSubmatch(trimmedLine); match != nil {
@@ -194,6 +222,7 @@ func parsePlainTextOutput(rawOutput string, report *SnykReport) {
 
 	if currentIssue != nil {
 		currentIssue.RawText = rawBlock.String()
+		currentIssue.Path = cleanPathStr(currentIssue.Path, report.ProjectPath)
 		report.Issues = append(report.Issues, *currentIssue)
 		report.Counts[currentIssue.Severity]++
 	}
@@ -216,4 +245,30 @@ func parsePlainTextOutput(rawOutput string, report *SnykReport) {
 			}
 		}
 	}
+}
+
+func stripANSIEscapes(str string) string {
+	return ansiEscapeRegex.ReplaceAllString(str, "")
+}
+
+func cleanPathStr(rawPath string, projectRoot string) string {
+	rawPath = strings.TrimSpace(rawPath)
+	if rawPath == "" {
+		return ""
+	}
+
+	cleanPath := strings.ReplaceAll(rawPath, "\\", "/")
+	if projectRoot != "" {
+		cleanRoot := strings.ReplaceAll(projectRoot, "\\", "/")
+		// Cross-platform root prefix trimming
+		if strings.HasPrefix(strings.ToLower(cleanPath), strings.ToLower(cleanRoot)) {
+			rel := cleanPath[len(cleanRoot):]
+			rel = strings.TrimPrefix(rel, "/")
+			if rel != "" {
+				return rel
+			}
+		}
+	}
+
+	return cleanPath
 }
