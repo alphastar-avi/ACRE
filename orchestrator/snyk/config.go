@@ -12,6 +12,7 @@ func DefaultConfig() Config {
 	return Config{
 		TargetSeverities: map[string]bool{
 			"HIGH":     true,
+			"MEDIUM":   true,
 			"CRITICAL": true,
 		},
 		MaxSnykFixRetries: 3,
