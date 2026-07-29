@@ -5,8 +5,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"acre/opencode"
+	"acre/snyk"
 )
 
 // Generate runs the OKF documentation pipeline for a repository.
@@ -184,3 +186,87 @@ func replaceRepoPlaceholder(content string, repoName string, scope string) strin
 	content = strings.ReplaceAll(content, "<ScopeInstructions>", scopeIns)
 	return content
 }
+
+// LoadOKF checks for OKF documentation at target path or standard locations.
+func LoadOKF(specifiedPath string, repoPath string) (absPath string, indexContent string, found bool) {
+	candidates := []string{}
+	if specifiedPath != "" {
+		candidates = append(candidates, specifiedPath)
+	}
+	repoName := filepath.Base(repoPath)
+	candidates = append(candidates,
+		filepath.Join(repoPath, "OKF"),
+		filepath.Join("OKF", repoName),
+		filepath.Join("..", "OKF", repoName),
+	)
+
+	for _, cand := range candidates {
+		info, err := os.Stat(cand)
+		if err == nil {
+			if info.IsDir() {
+				indexPath := filepath.Join(cand, "index.md")
+				data, readErr := os.ReadFile(indexPath)
+				if readErr == nil {
+					abs, _ := filepath.Abs(cand)
+					return abs, string(data), true
+				}
+			} else if strings.HasSuffix(cand, ".md") {
+				data, readErr := os.ReadFile(cand)
+				if readErr == nil {
+					abs, _ := filepath.Abs(cand)
+					return abs, string(data), true
+				}
+			}
+		}
+	}
+	return "", "", false
+}
+
+// UpdateOKFWithRemediation appends knowledge of a successful vulnerability fix into OKF documentation.
+func UpdateOKFWithRemediation(repoPath string, specifiedPath string, bunchTitle string, fixedIssues []snyk.Issue, approach string) error {
+	okfDir := filepath.Join(repoPath, "OKF")
+	if specifiedPath != "" {
+		info, err := os.Stat(specifiedPath)
+		if err == nil && info.IsDir() {
+			okfDir = specifiedPath
+		}
+	}
+
+	if err := os.MkdirAll(okfDir, 0755); err != nil {
+		return err
+	}
+
+	remFile := filepath.Join(okfDir, "snyk_remediations.md")
+	var builder strings.Builder
+
+	if _, err := os.Stat(remFile); os.IsNotExist(err) {
+		builder.WriteString("---\n")
+		builder.WriteString("type: Security Remediation Log\n")
+		builder.WriteString("title: Snyk Vulnerability Remediation Knowledge\n")
+		builder.WriteString("description: Knowledge base of resolved Snyk security vulnerabilities and applied fixes\n")
+		builder.WriteString("resource: OKF/snyk_remediations.md\n")
+		builder.WriteString("tags: [security, snyk, remediation, vulnerabilities]\n")
+		builder.WriteString(fmt.Sprintf("timestamp: %s\n", time.Now().Format(time.RFC3339)))
+		builder.WriteString("---\n\n")
+		builder.WriteString("# Snyk Security Vulnerability Remediations\n\n")
+	}
+
+	builder.WriteString(fmt.Sprintf("## [%s] %s\n", time.Now().Format("2006-01-02 15:04:05"), bunchTitle))
+	builder.WriteString(fmt.Sprintf("* **Approach Used:** %s\n", approach))
+	builder.WriteString("* **Fixed Findings:**\n")
+	for _, issue := range fixedIssues {
+		builder.WriteString(fmt.Sprintf("  - `[%s]` **%s** in `%s` (Line %d) - ID: `%s`\n",
+			issue.Severity, issue.Title, issue.Path, issue.LineNumber, issue.FindingID))
+	}
+	builder.WriteString("\n---\n\n")
+
+	f, err := os.OpenFile(remFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	_, err = f.WriteString(builder.String())
+	return err
+}
+

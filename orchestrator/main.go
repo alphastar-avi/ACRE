@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"strconv"
+
 	"acre/okf"
 	"acre/runner"
 )
@@ -60,11 +62,41 @@ func main() {
 	enablePR := flag.Bool("pr", false, "Create a Git branch, push, and open a PR if successful")
 	enableRecs := flag.Bool("r", false, "Analyze codebase, identify root cause, write structured recommendations report, and open a PR without changing codebase files")
 	enableTest := flag.Bool("test", false, "Test mode: analyze codebase, compile solution, generate report & manual PR URL without git operations or running regression tests")
+
+	// Snyk remediation flags
+	snykRepoPath := flag.String("snyk", "", "Path to repository to scan and resolve Snyk code test vulnerabilities for")
+	reportPath := flag.String("report", "", "Path to directory to output final Snyk remediation reports (report.md, opencode_output.md, logs.md)")
+	okfPathUpper := flag.String("OKF", "", "Optional path to OKF documentation directory or file")
+	debugFlag := flag.String("debug", "", "Optional max number of high severity vulnerability bunches to process (e.g. 1 or 'a')")
+
 	flag.Parse()
 
 	// Check if opencode is installed in system PATH
 	if _, err := exec.LookPath("opencode"); err != nil {
 		log.Fatalf("Error: 'opencode' executable not found in system PATH. ACRE requires the OpenCode CLI to be installed. Please install it first (e.g. 'brew install opencode').")
+	}
+
+	// If --snyk flag is specified, run Snyk remediation pipeline
+	if *snykRepoPath != "" {
+		outReportDir := *reportPath
+		if outReportDir == "" {
+			outReportDir = "runs/snyk_report"
+		}
+		debugMaxBunches := 0
+		if *debugFlag != "" {
+			if num, err := strconv.Atoi(*debugFlag); err == nil {
+				debugMaxBunches = num
+			} else {
+				// If debug is set to a single non-numeric token like "a" or "1", default to 1 bunch
+				debugMaxBunches = 1
+			}
+		}
+
+		err := runner.RunSnyk(*snykRepoPath, outReportDir, *okfPathUpper, debugMaxBunches)
+		if err != nil {
+			log.Fatalf("Snyk Vulnerability Remediation failed: %v", err)
+		}
+		os.Exit(0)
 	}
 
 	// If --okf flag is specified, run the documentation indexer and exit
