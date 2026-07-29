@@ -132,11 +132,12 @@ func Generate(t *ticket.Ticket, repoPath string, enableRecs bool) string {
 func GenerateSnykPrompt(issues []snyk.Issue, repoPath string, okfPath string, okfContent string) string {
 	var builder strings.Builder
 
-	builder.WriteString("# NON-INTERACTIVE AUTOMATED CODE REMEDIATION DIRECTIVE\n\n")
-	builder.WriteString("CRITICAL DIRECTIVE: You are executing in fully automated non-interactive remediation mode inside ACRE.\n")
+	builder.WriteString(fmt.Sprintf("Fix the %d Snyk security vulnerability finding(s) listed below in the target repository at `%s`.\n\n", len(issues), repoPath))
+	builder.WriteString("AUTOMATED NON-INTERACTIVE DIRECTIVE:\n")
+	builder.WriteString("- You are executing in fully automated non-interactive remediation mode inside ACRE.\n")
 	builder.WriteString("- DO NOT ask questions, request user confirmation, or ask for Snyk reports or tech stack clarification.\n")
 	builder.WriteString("- ALL targeted Snyk findings, file paths, line numbers, and vulnerability descriptions are explicitly provided below.\n")
-	builder.WriteString("- IMMEDIATELY inspect the repository, edit the source code to remediate the findings, verify project compilation, update/create OKF documentation, write `remediation_details.json`, and exit!\n\n")
+	builder.WriteString("- IMMEDIATELY inspect the repository files, edit the source code to remediate the findings, verify project compilation, update/create OKF documentation, write `remediation_details.json`, and exit!\n\n")
 
 	builder.WriteString(fmt.Sprintf("Repository Path: %s\n\n", repoPath))
 
