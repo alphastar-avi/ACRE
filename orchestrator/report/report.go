@@ -63,6 +63,7 @@ func Generate(baseRunsDir string, data Data) (string, error) {
 	if err := os.WriteFile(filepath.Join(runDir, "prompt.txt"), []byte(data.Prompt), 0644); err != nil {
 		return "", err
 	}
+	_ = os.WriteFile(filepath.Join(runDir, "prompt.md"), []byte(data.Prompt), 0644)
 
 	// Save opencode output
 	if err := os.WriteFile(filepath.Join(runDir, "opencode_output.log"), []byte(data.OpenCodeOutput), 0644); err != nil {

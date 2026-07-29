@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"acre/snyk"
 	"acre/ticket"
 )
 
@@ -126,3 +127,73 @@ func Generate(t *ticket.Ticket, repoPath string, enableRecs bool) string {
 
 	return builder.String()
 }
+
+// GenerateSnykPrompt constructs a targeted remediation prompt for OpenCode to resolve a specific bunch of Snyk vulnerabilities.
+func GenerateSnykPrompt(issues []snyk.Issue, repoPath string, okfPath string, okfContent string, attempt int, feedback string) string {
+	var builder strings.Builder
+
+	builder.WriteString("You are a senior security and software engineer tasked with fixing code vulnerabilities identified by Snyk Code Static Analysis.\n")
+	builder.WriteString(fmt.Sprintf("Repository Path: %s\n\n", repoPath))
+
+	if okfContent != "" {
+		builder.WriteString("## Codebase Architecture & Context (Open Knowledge Format - OKF)\n")
+		builder.WriteString("Refer to the following OKF documentation index for codebase conventions, module boundaries, and architectural patterns:\n")
+		if okfPath != "" {
+			builder.WriteString(fmt.Sprintf("OKF Path: %s\n\n", okfPath))
+		}
+		builder.WriteString("```markdown\n")
+		builder.WriteString(okfContent)
+		builder.WriteString("\n```\n\n")
+		builder.WriteString("### OKF Usage Guidelines:\n")
+		builder.WriteString("1. **Reference Knowledge**: Use the OKF documentation to understand existing architecture, design patterns, and module guidelines.\n")
+		builder.WriteString("2. **Update / Create OKF Knowledge**: Upon resolving these vulnerabilities, if you gain key insights, identify specific fix patterns, or create security practices for this module, you SHOULD update or create concept files inside the repository's `OKF/` folder (e.g. `OKF/snyk_remediations.md` or update `OKF/index.md`). Maintain OKF v0.1 format with YAML frontmatter.\n\n")
+	}
+
+	builder.WriteString("## Targeted Snyk Vulnerabilities Bunch\n")
+	builder.WriteString(fmt.Sprintf("You must resolve the following %d vulnerability finding(s):\n\n", len(issues)))
+
+	for idx, issue := range issues {
+		builder.WriteString(fmt.Sprintf("### Finding %d/%d: [%s] %s\n", idx+1, len(issues), issue.Severity, issue.Title))
+		if issue.FindingID != "" {
+			builder.WriteString(fmt.Sprintf("* **Finding ID:** `%s`\n", issue.FindingID))
+		}
+		builder.WriteString(fmt.Sprintf("* **File Path:** `%s`", issue.Path))
+		if issue.LineNumber > 0 {
+			builder.WriteString(fmt.Sprintf(", Line: %d", issue.LineNumber))
+		}
+		builder.WriteString("\n")
+		builder.WriteString(fmt.Sprintf("* **Vulnerability Details:** %s\n\n", issue.Info))
+	}
+
+	if feedback != "" {
+		builder.WriteString(fmt.Sprintf("## Verification Feedback (Attempt %d)\n", attempt))
+		builder.WriteString(feedback + "\n\n")
+	}
+
+	builder.WriteString("## Strict Engineering & Remediation Guidelines\n")
+	builder.WriteString("1. **Strictly Scope Fixes**: Focus ONLY on resolving the specific Snyk security findings listed above. Do NOT perform unrelated code refactoring, cosmetic edits, or change logic in unrelated files.\n")
+	builder.WriteString("2. **Preserve Functionality & Style**: Ensure modifications do NOT break existing business logic, framework behaviour, or public API signatures. Mirror the existing codebase design style, naming conventions, indentation, and paradigms exactly.\n")
+	builder.WriteString("3. **Minimal & Sufficient Modifications**: Keep changes concise, robust, and targeted to eliminate the vulnerability while preserving stability.\n")
+	builder.WriteString("4. **No Hallucinations**: Verify all file paths and symbols directly in the codebase before editing.\n")
+	builder.WriteString("5. **Mandatory Reporting File**: You MUST create or update a JSON file named `remediation_details.json` at the root of the repository before finishing with the following structure:\n")
+	builder.WriteString("```json\n")
+	builder.WriteString("{\n")
+	builder.WriteString("  \"understood_issue\": \"Detailed summary of the Snyk security findings addressed\",\n")
+	builder.WriteString("  \"potential_issue\": \"Root cause of the vulnerability in the existing code\",\n")
+	builder.WriteString("  \"approach\": \"Exact security fix applied (e.g. sanitization, removing hardcoded secrets, safe deserialization)\",\n")
+	builder.WriteString("  \"code_changes\": [\n")
+	builder.WriteString("    {\n")
+	builder.WriteString("      \"file\": \"relative/path/to/modified/file.cs\",\n")
+	builder.WriteString("      \"description\": \"Specific security remediation made in this file\"\n")
+	builder.WriteString("    }\n")
+	builder.WriteString("  ],\n")
+	builder.WriteString("  \"confidence_score\": 95,\n")
+	builder.WriteString("  \"confidence_justification\": \"High confidence after implementing safe sanitization pattern\",\n")
+	builder.WriteString("  \"solved\": true,\n")
+	builder.WriteString("  \"wrote_tests\": false\n")
+	builder.WriteString("}\n")
+	builder.WriteString("```\n")
+
+	return builder.String()
+}
+

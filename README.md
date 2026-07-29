@@ -28,7 +28,7 @@ An Incident Driven Automatic Code Remediation Engine.
 1. Configure credentials inside a `.env` file right next to the binary or at the root:
    ```env
    GITHUB_TOKEN=your_personal_access_token
-   OPENCODE_MODEL=your_custom_model_name  # Optional (e.g. anthropic/claude-3-7-sonnet). If omitted, OpenCode uses its configured default model.
+   OPENCODE_MODEL=your_custom_model_name  # Optional. Defaults to "opencode/big-pickle" if not set.
    ```
 2. Build the orchestrator:
    ```bash
@@ -82,6 +82,36 @@ go build -o jira main.go
 ./jira -ticket <TICKET_ID>
 ```
 This generates `<TICKET_ID>.json` with structured ticket fields (summary, description, acceptance criteria, and sorted comments) in the current directory and prints them to stdout.
+
+## Snyk Vulnerability Remediation (`--snyk`)
+
+ACRE includes an automated security vulnerability remediation engine powered by Snyk static code analysis (`snyk code test`).
+
+### Features & Capabilities
+* **Automated Snyk Parsing**: Parses both standard plaintext output from `snyk code test` (extracting Finding IDs, severity tags `[HIGH]`, `[MEDIUM]`, `[LOW]`, `[CRITICAL]`, line numbers, and file paths) and JSON formatted output.
+* **Similarity Vulnerability Grouping**: Groups targeted vulnerabilities by vulnerability category/rule title and module/component directory so related security findings are fixed together in optimal batches (1 to 10+ findings).
+* **Configurable Severities & Retries (`snyk.Config`)**: Target severities (`HIGH`, `CRITICAL`, `MEDIUM`, `LOW`) and max retry attempts (`MaxSnykFixRetries`, `MaxBuildRetries`) can be easily configured in Go code.
+* **Interactive OKF Validation & Updates**: If `--OKF` path is passed but missing, prompts interactively in the CLI: `"Cant find OKF, should i proceed without one? Y/N"`. Upon successful vulnerability resolution and verification, automatically appends knowledge records to `OKF/snyk_remediations.md`.
+* **Dual Self-Healing Verification Loops**:
+  1. **Snyk Fix Loop (Max 3 Tries)**: Applies minimal, targeted security fixes via OpenCode, re-tests with `snyk code test`, and verifies if targeted findings are eliminated.
+  2. **Build Verification Loop (Max 3 Tries)**: Compiles the solution (`dotnet build`). If compilation fails, feeds build error output back to OpenCode for repair.
+* **Complete Report Package**: Outputs detailed artifacts in the `--report` directory:
+  - `report.md`: Structured breakdown of initial severities, bunch actions, resolved findings, code modifications, and final summary statistics.
+  - `prompt.md`: System prompts fed to OpenCode during execution.
+  - `opencode_output.md`: Concatenated raw logs of all OpenCode runs.
+  - `logs.md`: Complete execution trace log of the orchestrator CLI.
+
+### Command Usage
+```bash
+./acre --snyk "/path/to/target/repo" --report "/path/to/report/dir" --OKF "/path/to/okf/folder" --debug 1
+```
+
+#### Parameters
+* `--snyk <full path>` *(Required)*: Path to the target repository to scan and resolve Snyk vulnerabilities for.
+* `--report <full path>` *(Optional)*: Directory path where output reports (`report.md`, `prompt.md`, `opencode_output.md`, `logs.md`) will be saved (defaults to `runs/snyk_report`).
+* `--OKF <full path>` *(Optional)*: Path to OKF documentation directory or file.
+* `--debug <a>` *(Optional)*: Max number of vulnerability bunches to process (e.g. `--debug 1` stops after remediating 1 bunch; omitted processes all target severity bunches).
+
 
 
 

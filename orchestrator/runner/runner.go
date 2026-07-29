@@ -55,7 +55,7 @@ func Run(ticketPath, repoPath, runsDir string, enablePR, enableRecs, enableTest 
 		branchName = t.TicketID // e.g. ENG-0001
 		fmt.Printf("   [Git PR] Creating and checking out branch %s from %s...\n", branchName, baseBranch)
 		if err := github.CreateBranch(repoPath, branchName, baseBranch); err != nil {
-			return fmt.Errorf("failed to create branch %s: %w", err)
+			return fmt.Errorf("failed to create branch %s: %w", branchName, err)
 		}
 	} else if enableTest {
 		fmt.Printf("   %s[Test Mode]%s Skipping Git branch creation, checkout, commit, and push.\n\n", Yellow, Reset)
