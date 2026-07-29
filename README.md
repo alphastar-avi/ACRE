@@ -49,19 +49,19 @@ An Incident Driven Automatic Code Remediation Engine.
      ```
 4. Run the orchestrator to generate OKF v0.1 documentation for a repository (supports relative or absolute full paths):
    ```bash
-   ./acre --okf /Users/avinash/Desktop/blurr/CodeBase/eShop-main
+   ./acre --okf /path/to/target/repo
    ```
    To focus documentation scanning and indexing on a specific module subdirectory (supports absolute full path or relative repo path), add the `--scope` parameter:
    ```bash
-   ./acre --okf /Users/avinash/Desktop/blurr/CodeBase/eShop-main --scope /Users/avinash/Desktop/blurr/CodeBase/eShop-main/src/Services/Basket
+   ./acre --okf /path/to/target/repo --scope /path/to/target/repo/src/Services/Basket
    ```
 
 ## Language & CLI Customization
 
 ACRE is designed to be language and tool-agnostic. You can easily adapt it:
-* **LLM CLI**: Swap `opencode` for any other CLI coding assistant (e.g., `codex`, `claudcode`) by modifying the command string inside [orchestrator/opencode/opencode.go](file:///Users/avinash/Desktop/blurr/ACRE/orchestrator/opencode/opencode.go).
-* **Compiling & Building**: Edit the build command parser inside [orchestrator/build/build.go](file:///Users/avinash/Desktop/blurr/ACRE/orchestrator/build/build.go) to target other compilers (e.g. `npm run build`, `make`, `cargo build`).
-* **Regression Testing**: Edit [orchestrator/test/test.go](file:///Users/avinash/Desktop/blurr/ACRE/orchestrator/test/test.go) to target your test runner (e.g. `pytest`, `npm test`, `go test`).
+* **LLM CLI**: Swap `opencode` for any other CLI coding assistant (e.g., `codex`, `claudcode`) by modifying the command string inside [orchestrator/opencode/opencode.go](orchestrator/opencode/opencode.go).
+* **Compiling & Building**: Edit the build command parser inside [orchestrator/build/build.go](orchestrator/build/build.go) to target other compilers (e.g. `npm run build`, `make`, `cargo build`).
+* **Regression Testing**: Edit [orchestrator/test/test.go](orchestrator/test/test.go) to target your test runner (e.g. `pytest`, `npm test`, `go test`).
 
 ## Jira Extractor
 
