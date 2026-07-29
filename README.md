@@ -92,12 +92,12 @@ ACRE includes an automated security vulnerability remediation engine powered by 
 * **Similarity Vulnerability Grouping**: Groups targeted vulnerabilities by vulnerability category/rule title and module/component directory so related security findings are fixed together in optimal batches (1 to 10+ findings).
 * **Configurable Severities & Retries (`snyk.Config`)**: Target severities (`HIGH`, `CRITICAL`, `MEDIUM`, `LOW`) and max retry attempts (`MaxSnykFixRetries`, `MaxBuildRetries`) can be easily configured in Go code.
 * **Interactive OKF Validation & Updates**: If `--OKF` path is passed but missing, prompts interactively in the CLI: `"Cant find OKF, should i proceed without one? Y/N"`. Upon successful vulnerability resolution and verification, automatically appends knowledge records to `OKF/snyk_remediations.md`.
-* **Dual Self-Healing Verification Loops**:
-  1. **Snyk Fix Loop (Max 3 Tries)**: Applies minimal, targeted security fixes via OpenCode, re-tests with `snyk code test`, and verifies if targeted findings are eliminated.
-  2. **Build Verification Loop (Max 3 Tries)**: Compiles the solution (`dotnet build`). If compilation fails, feeds build error output back to OpenCode for repair.
+* **Streamlined Wrapper Architecture**: The orchestrator performs the initial Snyk scan to discover vulnerabilities, constructs a comprehensive system prompt, executes OpenCode once, and runs the final Snyk verification scan to calculate the resolved vulnerability delta.
+* **OpenCode Agentic Remediation**: OpenCode handles vulnerability grouping ("few-bunch" strategy of 1-10 issues per batch), applies minimal & targeted security fixes, verifies native compilation builds, creates/updates OKF documentation, and writes `remediation_details.json`.
+* **Framework & Language Agnostic**: Build compilation checks are dynamically detected and executed by OpenCode according to the repository's native framework (e.g. `dotnet build` for .NET, `npm run build` or `npx tsc` for TS/JS, `go build` for Go, `mvn compile` for Java).
 * **Complete Report Package**: Outputs detailed artifacts in the `--report` directory:
-  - `report.md`: Structured breakdown of initial severities, bunch actions, resolved findings, code modifications, and final summary statistics.
-  - `prompt.md`: System prompts fed to OpenCode during execution.
+  - `report.md`: Structured breakdown of initial vs final Snyk counts, resolved delta, root cause analysis, and code modifications from `remediation_details.json`.
+  - `prompt.md`: Exact system prompt fed to OpenCode.
   - `opencode_output.md`: Concatenated raw logs of all OpenCode runs.
   - `logs.md`: Complete execution trace log of the orchestrator CLI.
 
