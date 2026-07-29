@@ -2,11 +2,12 @@ package snyk
 
 import (
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
 // GroupIssues filters issues by target severities and groups similar vulnerabilities into bunches.
-// Similarity is determined by finding title (vulnerability category) and codebase component/module path.
+// Bunches are sorted by severity priority (CRITICAL > HIGH > MEDIUM > LOW).
 func GroupIssues(issues []Issue, targetSeverities map[string]bool) [][]Issue {
 	var filtered []Issue
 	for _, issue := range issues {
@@ -20,7 +21,7 @@ func GroupIssues(issues []Issue, targetSeverities map[string]bool) [][]Issue {
 		return nil
 	}
 
-	// Map key: "Title::ModuleDir"
+	// Group key: "Title::ModuleDir"
 	groupedMap := make(map[string][]Issue)
 	var keys []string
 
@@ -48,10 +49,37 @@ func GroupIssues(issues []Issue, targetSeverities map[string]bool) [][]Issue {
 		}
 	}
 
+	// Sort bunches by highest severity rank descending
+	sort.SliceStable(bunches, func(i, j int) bool {
+		sevI := 0
+		if len(bunches[i]) > 0 {
+			sevI = severityRank(bunches[i][0].Severity)
+		}
+		sevJ := 0
+		if len(bunches[j]) > 0 {
+			sevJ = severityRank(bunches[j][0].Severity)
+		}
+		return sevI > sevJ
+	})
+
 	return bunches
 }
 
-// extractModuleDir extracts top-level module directory from file path e.g. "MediaModule/..." -> "MediaModule"
+func severityRank(sev string) int {
+	switch strings.ToUpper(sev) {
+	case "CRITICAL":
+		return 4
+	case "HIGH":
+		return 3
+	case "MEDIUM":
+		return 2
+	case "LOW":
+		return 1
+	default:
+		return 0
+	}
+}
+
 func extractModuleDir(pathStr string) string {
 	clean := filepath.ToSlash(pathStr)
 	parts := strings.Split(clean, "/")
