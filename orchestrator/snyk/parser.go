@@ -202,8 +202,14 @@ func parsePlainTextOutput(rawOutput string, report *SnykReport) {
 			} else if match := infoRegex.FindStringSubmatch(trimmedLine); match != nil {
 				currentIssue.Info = strings.TrimSpace(match[1])
 				inInfo = true
-			} else if inInfo && trimmedLine != "" && !strings.HasPrefix(trimmedLine, "╭") && !strings.HasPrefix(trimmedLine, "│") && !strings.HasPrefix(trimmedLine, "╰") && !strings.HasPrefix(trimmedLine, "💡") {
-				currentIssue.Info += " " + trimmedLine
+			} else if inInfo && trimmedLine != "" {
+				if strings.HasPrefix(trimmedLine, "╭") || strings.HasPrefix(trimmedLine, "│") || strings.HasPrefix(trimmedLine, "╰") ||
+					strings.HasPrefix(trimmedLine, "💡") || strings.Contains(trimmedLine, "To view ignored issues") ||
+					strings.Contains(trimmedLine, "Tip") || strings.Contains(trimmedLine, "Test Summary") {
+					inInfo = false
+				} else {
+					currentIssue.Info += " " + trimmedLine
+				}
 			}
 		}
 
