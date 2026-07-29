@@ -128,11 +128,16 @@ func Generate(t *ticket.Ticket, repoPath string, enableRecs bool) string {
 	return builder.String()
 }
 
-// GenerateSnykPrompt constructs a comprehensive remediation prompt for OpenCode to resolve Snyk vulnerabilities.
+// GenerateSnykPrompt constructs a comprehensive non-interactive remediation prompt for OpenCode to resolve Snyk vulnerabilities.
 func GenerateSnykPrompt(issues []snyk.Issue, repoPath string, okfPath string, okfContent string) string {
 	var builder strings.Builder
 
-	builder.WriteString("You are a senior security and software engineer tasked with fixing code vulnerabilities identified by Snyk Code Static Analysis.\n")
+	builder.WriteString("# NON-INTERACTIVE AUTOMATED CODE REMEDIATION DIRECTIVE\n\n")
+	builder.WriteString("CRITICAL DIRECTIVE: You are executing in fully automated non-interactive remediation mode inside ACRE.\n")
+	builder.WriteString("- DO NOT ask questions, request user confirmation, or ask for Snyk reports or tech stack clarification.\n")
+	builder.WriteString("- ALL targeted Snyk findings, file paths, line numbers, and vulnerability descriptions are explicitly provided below.\n")
+	builder.WriteString("- IMMEDIATELY inspect the repository, edit the source code to remediate the findings, verify project compilation, update/create OKF documentation, write `remediation_details.json`, and exit!\n\n")
+
 	builder.WriteString(fmt.Sprintf("Repository Path: %s\n\n", repoPath))
 
 	if okfContent != "" {
@@ -156,11 +161,15 @@ func GenerateSnykPrompt(issues []snyk.Issue, repoPath string, okfPath string, ok
 	builder.WriteString(fmt.Sprintf("You are tasked with resolving the following %d vulnerability finding(s):\n\n", len(issues)))
 
 	for idx, issue := range issues {
+		fullPath := issue.Path
+		if !filepath.IsAbs(fullPath) {
+			fullPath = filepath.Join(repoPath, issue.Path)
+		}
 		builder.WriteString(fmt.Sprintf("### Finding %d/%d: [%s] %s\n", idx+1, len(issues), issue.Severity, issue.Title))
 		if issue.FindingID != "" {
 			builder.WriteString(fmt.Sprintf("* **Finding ID:** `%s`\n", issue.FindingID))
 		}
-		builder.WriteString(fmt.Sprintf("* **File Path:** `%s`", issue.Path))
+		builder.WriteString(fmt.Sprintf("* **File Path:** `%s` (Full Path: `%s`)", issue.Path, fullPath))
 		if issue.LineNumber > 0 {
 			builder.WriteString(fmt.Sprintf(", Line: %d", issue.LineNumber))
 		}
@@ -205,5 +214,3 @@ func GenerateSnykPrompt(issues []snyk.Issue, repoPath string, okfPath string, ok
 
 	return builder.String()
 }
-
-
