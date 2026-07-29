@@ -159,23 +159,22 @@ func GenerateSnykPrompt(issues []snyk.Issue, repoPath string, okfPath string, ok
 	}
 
 	builder.WriteString("## Targeted Snyk Code Vulnerabilities\n")
-	builder.WriteString(fmt.Sprintf("You are tasked with resolving the following %d vulnerability finding(s):\n\n", len(issues)))
+	builder.WriteString(fmt.Sprintf("Fix the following %d vulnerability finding(s):\n\n", len(issues)))
 
 	for idx, issue := range issues {
-		fullPath := issue.Path
-		if !filepath.IsAbs(fullPath) {
-			fullPath = filepath.Join(repoPath, issue.Path)
+		builder.WriteString(fmt.Sprintf("--------------------------------------------------\n"))
+		builder.WriteString(fmt.Sprintf("Vulnerability Finding %d/%d:\n", idx+1, len(issues)))
+		if issue.RawText != "" {
+			builder.WriteString(strings.TrimSpace(issue.RawText) + "\n")
+		} else {
+			builder.WriteString(fmt.Sprintf(" ✗ [%s] %s\n", issue.Severity, issue.Title))
+			if issue.FindingID != "" {
+				builder.WriteString(fmt.Sprintf("   Finding ID: %s\n", issue.FindingID))
+			}
+			builder.WriteString(fmt.Sprintf("   Path: %s, line %d\n", issue.Path, issue.LineNumber))
+			builder.WriteString(fmt.Sprintf("   Info: %s\n", issue.Info))
 		}
-		builder.WriteString(fmt.Sprintf("### Finding %d/%d: [%s] %s\n", idx+1, len(issues), issue.Severity, issue.Title))
-		if issue.FindingID != "" {
-			builder.WriteString(fmt.Sprintf("* **Finding ID:** `%s`\n", issue.FindingID))
-		}
-		builder.WriteString(fmt.Sprintf("* **File Path:** `%s` (Full Path: `%s`)", issue.Path, fullPath))
-		if issue.LineNumber > 0 {
-			builder.WriteString(fmt.Sprintf(", Line: %d", issue.LineNumber))
-		}
-		builder.WriteString("\n")
-		builder.WriteString(fmt.Sprintf("* **Vulnerability Details:** %s\n\n", issue.Info))
+		builder.WriteString(fmt.Sprintf("--------------------------------------------------\n\n"))
 	}
 
 	builder.WriteString("## Strict Execution & Remediation Workflow\n")

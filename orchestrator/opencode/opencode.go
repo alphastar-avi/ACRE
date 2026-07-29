@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 // Run executes the opencode CLI with the given prompt in the target repository.
@@ -29,6 +30,7 @@ func Run(prompt string, repoPath string) (string, error) {
 
 	// Execute the opencode command non-interactively with auto-approvals.
 	cmd := exec.Command(opencodePath, args...)
+	cmd.Stdin = strings.NewReader(prompt)
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd.Stdout = io.MultiWriter(os.Stdout, &stdoutBuf)

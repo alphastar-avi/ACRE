@@ -136,6 +136,23 @@ func RunSnyk(snykRepoPath, reportDir, okfPath string, debugMaxBunches int) error
 		logPrintln("   %s[REMEDIATION SUCCESS]%s Successfully eliminated %d vulnerability finding(s)!", Green, Reset, resolvedDelta)
 	} else {
 		logPrintln("   %s[INFO]%s Scan complete. Open issues count after fix: %d.", Yellow, Reset, finalReport.OpenIssues)
+
+		// Interactive fallback prompt if initial feed did not eliminate vulnerabilities
+		fmt.Printf("\n   %s[PROMPT]%s Shall i make opencode do the 'snyk code test' on its own and pass the prompt? Y/N: ", Yellow, Reset)
+		var userChoice string
+		fmt.Scanln(&userChoice)
+		userChoice = strings.TrimSpace(strings.ToUpper(userChoice))
+		if userChoice == "Y" || userChoice == "YES" {
+			logPrintln("\n   %s[FALLBACK]%s Executing OpenCode self-driven Snyk scan & remediation...", Cyan, Reset)
+			fallbackPrompt := fmt.Sprintf("Execute `snyk code test` directly in the target repository at `%s` to discover open security vulnerabilities matching severities (HIGH, MEDIUM, CRITICAL). Apply minimal security fixes, verify native compilation build, update/create OKF documentation, write `remediation_details.json`, and exit!", absRepo)
+			fallbackOutput, fErr := opencode.Run(fallbackPrompt, absRepo)
+			opencodeLogBuffer.WriteString("\n--- FALLBACK RUN OUTPUT ---\n" + fallbackOutput)
+			if fErr != nil {
+				logPrintln("   %s[WARNING]%s Fallback OpenCode execution error: %v", Red, Reset, fErr)
+			}
+			// Re-run final Snyk scan verification
+			_, finalReport, _ = snyk.RunTest(absRepo)
+		}
 	}
 	logPrintln("")
 
