@@ -35,6 +35,30 @@ Open Issues
 ╰───────────────────────────────────────────────────────────────────────────────────╯
 `
 
+const userLaptopSampleOutput = `
+Testing C:\Users\asivak976\OneDrive - Comcast\Desktop\Concepts\ACRE ...
+
+Open Issues
+
+ ✗ [LOW] Path Traversal
+   Finding ID: 6c5bbe7d-f7f4-48da-989d-bceec70b0ef8
+   Path: JiraExtractor/main.go, line 268
+   Info: Unsanitized input from a CLI argument flows into os.WriteFile, where it is used as a path. This may result in a Path Traversal vulnerability and allow an attacker to write arbitrary files.
+
+ ✗ [MEDIUM] Server-Side Request Forgery (SSRF)
+   Finding ID: fa9dca22-95d9-487c-96a3-29b89acdb69d
+   Path: JiraExtractor/main.go, line 191
+   Info: Unsanitized input from a CLI argument flows into net.http.NewRequest, where it is used as an URL to perform a request. This may result in a Server-Side Request Forgery vulnerability.
+
+╭─────────────────────────────────────────────────────────────────────────────────────╮
+│ Test Summary                                                                        │
+│                                                                                     │
+│   Total issues:   2                                                                 │
+│   Ignored issues: 0 [ 0 HIGH  0 MEDIUM  0 LOW ]                                     │
+│   Open issues:    2 [ 0 HIGH  1 MEDIUM  1 LOW ]                                     │
+╰─────────────────────────────────────────────────────────────────────────────────────╯
+`
+
 func TestParseOutput(t *testing.T) {
 	report := ParseOutput(sampleSnykOutput)
 
@@ -46,6 +70,14 @@ func TestParseOutput(t *testing.T) {
 		t.Errorf("Expected TotalIssues 259, got %d", report.TotalIssues)
 	}
 
+	lowIssue := report.Issues[0]
+	if lowIssue.Path != "MDM/MDM.Web/Features/CentralLoginMigration/Hangfire/MigrateCentralLoginUsersJob.cs" {
+		t.Errorf("Unexpected path: %s", lowIssue.Path)
+	}
+	if lowIssue.LineNumber != 64 {
+		t.Errorf("Expected line 64, got %d", lowIssue.LineNumber)
+	}
+
 	highIssue := report.Issues[2]
 	if highIssue.Severity != "HIGH" {
 		t.Errorf("Expected HIGH severity, got %s", highIssue.Severity)
@@ -55,6 +87,33 @@ func TestParseOutput(t *testing.T) {
 	}
 	if highIssue.LineNumber != 241 {
 		t.Errorf("Expected line 241, got %d", highIssue.LineNumber)
+	}
+}
+
+func TestParseOutputUserSample(t *testing.T) {
+	report := ParseOutput(userLaptopSampleOutput)
+
+	if len(report.Issues) != 2 {
+		t.Fatalf("Expected 2 issues parsed, got %d", len(report.Issues))
+	}
+
+	issue1 := report.Issues[0]
+	if issue1.Path != "JiraExtractor/main.go" {
+		t.Errorf("Expected path 'JiraExtractor/main.go', got '%s'", issue1.Path)
+	}
+	if issue1.LineNumber != 268 {
+		t.Errorf("Expected line 268, got %d", issue1.LineNumber)
+	}
+
+	issue2 := report.Issues[1]
+	if issue2.Path != "JiraExtractor/main.go" {
+		t.Errorf("Expected path 'JiraExtractor/main.go', got '%s'", issue2.Path)
+	}
+	if issue2.LineNumber != 191 {
+		t.Errorf("Expected line 191, got %d", issue2.LineNumber)
+	}
+	if issue2.Severity != "MEDIUM" {
+		t.Errorf("Expected MEDIUM severity, got %s", issue2.Severity)
 	}
 }
 

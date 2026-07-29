@@ -8,15 +8,16 @@ import (
 )
 
 var (
-	// Regex matching finding header e.g.: ✗ [LOW] Exposure of Private Personal Information to an Unauthorized Actor
+	// Regex matching finding header e.g.: ✗ [LOW] Exposure of Private Personal Information...
 	findingHeaderRegex = regexp.MustCompile(`(?i)(?:✗\s*)?\[(LOW|MEDIUM|HIGH|CRITICAL)\]\s+(.+)`)
 	findingIDRegex     = regexp.MustCompile(`(?i)Finding ID:\s*([a-f0-9\-]+)`)
-	pathLineRegex      = regexp.MustCompile(`(?i)Path:\s*(.+?)(?:,\s*line\s*(\d+))?$`)
-	infoRegex          = regexp.MustCompile(`(?i)Info:\s*(.+)`)
+	pathWithLineRegex  = regexp.MustCompile(`(?i)^\s*Path:\s*(.+?),\s*line\s*(\d+)\s*$`)
+	pathOnlyRegex      = regexp.MustCompile(`(?i)^\s*Path:\s*(.+)\s*$`)
+	infoRegex          = regexp.MustCompile(`(?i)^\s*Info:\s*(.+)`)
 
 	// Regex matching summary table counts
-	totalIssuesRegex = regexp.MustCompile(`(?i)Total issues:\s*(\d+)`)
-	openIssuesRegex  = regexp.MustCompile(`(?i)Open issues:\s*(\d+)`)
+	totalIssuesRegex       = regexp.MustCompile(`(?i)Total issues:\s*(\d+)`)
+	openIssuesRegex        = regexp.MustCompile(`(?i)Open issues:\s*(\d+)`)
 	severityBreakdownRegex = regexp.MustCompile(`(?i)(\d+)\s*(HIGH|MEDIUM|LOW|CRITICAL)`)
 )
 
@@ -129,6 +130,7 @@ func parsePlainTextOutput(rawOutput string, report *SnykReport) {
 	lines := strings.Split(rawOutput, "\n")
 	var currentIssue *Issue
 	var rawBlock strings.Builder
+	inInfo := false
 
 	for i := 0; i < len(lines); i++ {
 		line := strings.TrimRight(lines[i], "\r")
@@ -147,6 +149,7 @@ func parsePlainTextOutput(rawOutput string, report *SnykReport) {
 			}
 			rawBlock.Reset()
 			rawBlock.WriteString(line + "\n")
+			inInfo = false
 			continue
 		}
 
@@ -155,15 +158,24 @@ func parsePlainTextOutput(rawOutput string, report *SnykReport) {
 
 			if match := findingIDRegex.FindStringSubmatch(trimmedLine); match != nil {
 				currentIssue.FindingID = strings.TrimSpace(match[1])
-			} else if match := pathLineRegex.FindStringSubmatch(trimmedLine); match != nil {
+				inInfo = false
+			} else if match := pathWithLineRegex.FindStringSubmatch(trimmedLine); match != nil {
 				currentIssue.Path = strings.TrimSpace(match[1])
-				if len(match) > 2 && match[2] != "" {
-					if lNum, err := strconv.Atoi(match[2]); err == nil {
-						currentIssue.LineNumber = lNum
-					}
+				if lNum, err := strconv.Atoi(match[2]); err == nil {
+					currentIssue.LineNumber = lNum
 				}
+				inInfo = false
+			} else if match := pathOnlyRegex.FindStringSubmatch(trimmedLine); match != nil {
+				// Only set Path if line starts with Path: and current issue path is empty
+				if currentIssue.Path == "" {
+					currentIssue.Path = strings.TrimSpace(match[1])
+				}
+				inInfo = false
 			} else if match := infoRegex.FindStringSubmatch(trimmedLine); match != nil {
 				currentIssue.Info = strings.TrimSpace(match[1])
+				inInfo = true
+			} else if inInfo && trimmedLine != "" && !strings.HasPrefix(trimmedLine, "╭") && !strings.HasPrefix(trimmedLine, "│") && !strings.HasPrefix(trimmedLine, "╰") && !strings.HasPrefix(trimmedLine, "💡") {
+				currentIssue.Info += " " + trimmedLine
 			}
 		}
 
@@ -193,14 +205,13 @@ func parsePlainTextOutput(rawOutput string, report *SnykReport) {
 		report.OpenIssues = len(report.Issues)
 	}
 
-	// Parse breakdown from summary text if present e.g. Open issues: 259 [ 1 HIGH  7 MEDIUM  5LOW ]
+	// Parse breakdown from summary text if present e.g. Open issues: 259 [ 1 HIGH  7 MEDIUM  5 LOW ]
 	matches := severityBreakdownRegex.FindAllStringSubmatch(rawOutput, -1)
 	for _, m := range matches {
 		if len(m) == 3 {
 			count, err := strconv.Atoi(m[1])
 			sev := strings.ToUpper(m[2])
 			if err == nil {
-				// Update count from summary if available
 				report.Counts[sev] = count
 			}
 		}
