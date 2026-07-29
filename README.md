@@ -89,12 +89,13 @@ ACRE includes an automated security vulnerability remediation engine powered by 
 
 ### Features & Capabilities
 * **Automated Snyk Parsing**: Parses both standard plaintext output from `snyk code test` (extracting Finding IDs, severity tags `[HIGH]`, `[MEDIUM]`, `[LOW]`, `[CRITICAL]`, line numbers, and file paths) and JSON formatted output.
-* **Similarity Vulnerability Grouping**: Groups targeted vulnerabilities by vulnerability category/rule title and module/component directory so related security findings are fixed together in optimal batches (1 to 10+ findings).
-* **Configurable Severities & Retries (`snyk.Config`)**: Target severities (`HIGH`, `CRITICAL`, `MEDIUM`, `LOW`) and max retry attempts (`MaxSnykFixRetries`, `MaxBuildRetries`) can be easily configured in Go code.
+* **Similarity Vulnerability Grouping**: Groups targeted vulnerabilities by category/rule title and component directory into optimal batches (1 to 10 findings per bunch) sorted by severity priority (`CRITICAL` > `HIGH` > `MEDIUM` > `LOW`).
+* **Configurable Severities (`snyk.Config`)**: Target severities (`HIGH`, `MEDIUM`, `CRITICAL`) are managed in `snyk.Config`.
 * **Interactive OKF Validation & Updates**: If `--OKF` path is passed but missing, prompts interactively in the CLI: `"Cant find OKF, should i proceed without one? Y/N"`. Upon successful vulnerability resolution and verification, automatically appends knowledge records to `OKF/snyk_remediations.md`.
 * **Streamlined Wrapper Architecture**: The orchestrator performs the initial Snyk scan to discover vulnerabilities, constructs a comprehensive system prompt, executes OpenCode once, and runs the final Snyk verification scan to calculate the resolved vulnerability delta.
 * **OpenCode Agentic Remediation**: OpenCode handles vulnerability grouping ("few-bunch" strategy of 1-10 issues per batch), applies minimal & targeted security fixes, verifies native compilation builds, creates/updates OKF documentation, and writes `remediation_details.json`.
 * **Framework & Language Agnostic**: Build compilation checks are dynamically detected and executed by OpenCode according to the repository's native framework (e.g. `dotnet build` for .NET, `npm run build` or `npx tsc` for TS/JS, `go build` for Go, `mvn compile` for Java).
+* **Anti-Hallucination & Safe Early Quit Rule**: System prompt instructs OpenCode to quit safely with `solved: false` and manual recommendations if a vulnerability cannot be safely resolved without breaking core architecture, preventing hallucinated or dummy edits.
 * **Complete Report Package**: Outputs detailed artifacts in the `--report` directory:
   - `report.md`: Structured breakdown of initial vs final Snyk counts, resolved delta, root cause analysis, and code modifications from `remediation_details.json`.
   - `prompt.md`: Exact system prompt fed to OpenCode.
@@ -110,7 +111,7 @@ ACRE includes an automated security vulnerability remediation engine powered by 
 * `--snyk <full path>` *(Required)*: Path to the target repository to scan and resolve Snyk vulnerabilities for.
 * `--report <full path>` *(Optional)*: Directory path where output reports (`report.md`, `prompt.md`, `opencode_output.md`, `logs.md`) will be saved (defaults to `runs/snyk_report`).
 * `--OKF <full path>` *(Optional)*: Path to OKF documentation directory or file.
-* `--debug <a>` *(Optional)*: Max number of vulnerability bunches to process (e.g. `--debug 1` stops after remediating 1 bunch; omitted processes all target severity bunches).
+* `--debug <a>` *(Optional)*: Max number of severity-sorted vulnerability bunches to process (e.g. `--debug 1` limits execution to top 1 highest severity bunch; omitted processes all target severity bunches).
 
 
 

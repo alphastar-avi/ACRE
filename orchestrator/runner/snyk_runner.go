@@ -79,29 +79,29 @@ func RunSnyk(snykRepoPath, reportDir, okfPath string, debugMaxBunches int) error
 	}
 	logPrintln("")
 
-	// 3. Filter Vulnerabilities
-	logPrintln("%s[STEP 3/5]%s %sFiltering Vulnerabilities for OpenCode Remediation Agent...%s", Cyan, Reset, Bold, Reset)
+	// 3. Filter & Group Vulnerabilities into Similarity Bunches
+	logPrintln("%s[STEP 3/5]%s %sGrouping Target Vulnerabilities into Similarity Bunches...%s", Cyan, Reset, Bold, Reset)
 	cfg := snyk.DefaultConfig()
 
-	var targetIssues []snyk.Issue
-	for _, iss := range initialReport.Issues {
-		sev := strings.ToUpper(iss.Severity)
-		if cfg.TargetSeverities[sev] {
-			targetIssues = append(targetIssues, iss)
-		}
-	}
-
-	if len(targetIssues) == 0 {
+	bunches := snyk.GroupIssues(initialReport.Issues, cfg.TargetSeverities)
+	if len(bunches) == 0 {
 		logPrintln("   %s[SUCCESS]%s No targeted vulnerabilities found for remediation!", Green, Reset)
 		return generateSnykReports(reportDir, initialReport, initialReport, nil, "", "", logBuffer.String())
 	}
 
-	if debugMaxBunches > 0 && debugMaxBunches < len(targetIssues) {
-		logPrintln("   %s[DEBUG MODE]%s Limiting targeted findings to top %d items.", Yellow, Reset, debugMaxBunches)
-		targetIssues = targetIssues[:debugMaxBunches]
+	totalBunches := len(bunches)
+	if debugMaxBunches > 0 && debugMaxBunches < totalBunches {
+		logPrintln("   %s[DEBUG MODE]%s Processing top %d bunch(es) out of %d total bunches.", Yellow, Reset, debugMaxBunches, totalBunches)
+		bunches = bunches[:debugMaxBunches]
 	} else {
-		logPrintln("   Prepared %d targeted vulnerability finding(s) for OpenCode.", len(targetIssues))
+		logPrintln("   Prepared %d similarity bunch(es) of vulnerabilities for OpenCode.", totalBunches)
 	}
+
+	var targetIssues []snyk.Issue
+	for _, b := range bunches {
+		targetIssues = append(targetIssues, b...)
+	}
+	logPrintln("   Total targeted findings in selected bunch(es): %d", len(targetIssues))
 	logPrintln("")
 
 	// 4. Construct Prompt & Execute OpenCode
