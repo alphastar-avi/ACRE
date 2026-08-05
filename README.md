@@ -1,29 +1,33 @@
 # ACRE
 
-An Incident Driven Automatic Code Remediation Engine.
+An Incident-Driven Automatic Code Remediation Engine.
 
 <img width="1470" height="220" alt="Screenshot 2026-06-29 at 4 03 01 AM" src="https://github.com/user-attachments/assets/ce4813ad-fe67-4d87-9642-f4d332b3e0a5" />
 
 ## Features
 
 * **Ticket Ingestion**: Loads and parses structured JSON incident reports.
-* **Open Knowledge Format (OKF) Integration**: Automatically detects and ingests OKF v0.1 specification directories (e.g. `OKF/<repoName>/`) containing structured markdown files and YAML metadata, appending them to the diagnostic prompt to guide targeting.
+* **Open Knowledge Format (OKF) Integration**: Automatically detects and ingests OKF v0.1 specification directories (e.g. `OKF/<repoName>/`) containing structured markdown files and YAML metadata.
 * **Prompt Construction**: Programmatically builds detailed diagnostic prompts for OpenCode with codebase styling, backend focus scopes, and senior engineering guidelines.
 * **OpenCode CLI Integration**: Executes OpenCode non-interactively using the `--dangerously-skip-permissions` sandbox to repair the code.
-* **Dynamic Build & Test Runners**: Scans the target codebase to detect solutions (`.sln`/`.slnx`) and test projects, executing clean builds (`dotnet build <sln>`) and test suites (`dotnet test <sln>`) while bypassing docker-compose errors, falling back to console runners where appropriate.
-* **Self-Healing Loop**: Automatically detects compilation/test failures and feeds the errors back to OpenCode to retry (up to 3 times).
-* **PR Generation on Both Success and Failure**: Under the `--pr` flag, commits and pushes changes to a ticket-specific branch. If validation fails, it still submits a PR but tags the title and body with `(Validation Failed)` warnings so engineers can inspect intermediate states.
-* **Remediation Report**: Generates timestamped run reports with command logs, stdout/stderr logs, structured analysis, final outcome states, and pull request URLs.
-* **Robust Credential Loading**: Searches for `.env` files in both the current working directory and directly adjacent to the compiled `acre` binary.
-* **OKF Documentation Generator**: Supports scanning codebases and automatically generating/updating detailed, conformant OKF v0.1 documentation directories under `OKF/` via the `--okf` CLI command.
+* **Dynamic Build & Test Runners**: Scans target codebases to detect solutions (`.sln`/`.slnx`) and test projects, executing clean builds (`dotnet build <sln>`) and test suites (`dotnet test <sln>`).
+* **Snyk SARIF Extraction & Normalization (`--snykjson`)**: Runs `snyk code test --json`, parses SARIF 2.1.0 schema, normalizes findings into a unified JSON format, supports filtering by `--ruleid`, and outputs clean normalized JSON files (`snykOutput/Output<datetime>.json`) or directly to stdout (`--cli`).
+* **Targeted Snyk Security Remediation (`--snyk`)**: Ingests normalized Snyk finding JSON files (`Output<datetime>.json`), accepts reference instruction files (`--REF`), guides OpenCode to apply security fixes, auto-detect build tools, compile projects, and verify resolution per `ruleId` in real-time.
+* **Self-Healing Loop**: Automatically detects compilation/test failures and feeds errors back to OpenCode to retry.
+* **PR Generation**: Under the `--pr` flag, commits and pushes changes to a ticket-specific branch.
+* **Remediation Report**: Generates timestamped run reports (`report.md`, `prompt.md`, `opencode_output.md`, `logs.md`).
+
+---
 
 ## Prerequisites
 
-* **Go compiler** (version 1.20 or later, required to build ACRE)
+* **Go Compiler** (version 1.20 or later, required to build ACRE)
 * **LLM Coding CLI**: OpenCode (install via `brew install opencode`), Codex, or ClaudCode
 * **Target SDK**: .NET SDK (only required for C# repositories), Node.js (for JS/TS), Python, Go, etc.
 
-## Setup
+---
+
+## Setup & Building
 
 1. Configure credentials inside a `.env` file right next to the binary or at the root:
    ```env
@@ -35,84 +39,102 @@ An Incident Driven Automatic Code Remediation Engine.
    cd orchestrator
    go build -o acre main.go
    ```
-   - **Remediation Mode (with auto-PR)**: Modifies files, compiles, runs tests, self-heals, and opens a PR with actual code changes:
-     ```bash
-     ./acre --ticket ../tickets/ENG-0001.json --repo /path/to/target/repo --runs-dir ../runs --pr
-     ```
-   - **Recommendations Mode (no code changes)**: Analyzes codebase, discards source code modifications, generates a structured analysis report (`recommendations.md`) with a confidence score/justification, commits only the report, and opens a PR with details:
-     ```bash
-     ./acre --ticket ../tickets/ENG-0001.json --repo /path/to/target/repo --runs-dir ../runs -r
-     ```
-   - **Test Mode (`--test`)**: Lightweight diagnostic mode. OpenCode analyzes the codebase for a fix, ACRE executes a full solution compilation check, skips git operations (no branch/commit/push) and regression tests, and outputs a prefilled manual GitHub PR link directly in the console:
-     ```bash
-     ./acre --ticket ../tickets/ENG-0001.json --repo /path/to/target/repo --runs-dir ../runs --test
-     ```
-4. Run the orchestrator to generate OKF v0.1 documentation for a repository (supports relative or absolute full paths):
-   ```bash
-   ./acre --okf /Users/avinash/Desktop/blurr/CodeBase/eShop-main
-   ```
-   To focus documentation scanning and indexing on a specific module subdirectory (supports absolute full path or relative repo path), add the `--scope` parameter:
-   ```bash
-   ./acre --okf /Users/avinash/Desktop/blurr/CodeBase/eShop-main --scope /Users/avinash/Desktop/blurr/CodeBase/eShop-main/src/Services/Basket
-   ```
 
-## Language & CLI Customization
+---
 
-ACRE is designed to be language and tool-agnostic. You can easily adapt it:
-* **LLM CLI**: Swap `opencode` for any other CLI coding assistant (e.g., `codex`, `claudcode`) by modifying the command string inside [orchestrator/opencode/opencode.go](file:///Users/avinash/Desktop/blurr/ACRE/orchestrator/opencode/opencode.go).
-* **Compiling & Building**: Edit the build command parser inside [orchestrator/build/build.go](file:///Users/avinash/Desktop/blurr/ACRE/orchestrator/build/build.go) to target other compilers (e.g. `npm run build`, `make`, `cargo build`).
-* **Regression Testing**: Edit [orchestrator/test/test.go](file:///Users/avinash/Desktop/blurr/ACRE/orchestrator/test/test.go) to target your test runner (e.g. `pytest`, `npm test`, `go test`).
+## Incident Remediation Workflow
+
+- **Remediation Mode (with auto-PR)**:
+  ```bash
+  ./acre --ticket ../tickets/ENG-0001.json --repo /path/to/target/repo --runs-dir ../runs --pr
+  ```
+- **Recommendations Mode (no code changes)**:
+  ```bash
+  ./acre --ticket ../tickets/ENG-0001.json --repo /path/to/target/repo --runs-dir ../runs -r
+  ```
+- **Test Mode (`--test`)**:
+  ```bash
+  ./acre --ticket ../tickets/ENG-0001.json --repo /path/to/target/repo --runs-dir ../runs --test
+  ```
+
+---
+
+## Snyk Vulnerability Remediation Workflow
+
+ACRE includes a two-stage automated security vulnerability remediation engine powered by Snyk static code analysis.
+
+### Stage 1: Extraction & SARIF Normalization (`--snykjson`)
+
+Runs `snyk code test --json`, saves raw output to `snykOutput.json`, parses SARIF 2.1.0 schema, and normalizes findings into the target JSON structure:
+
+```json
+{
+  "ruleId": "csharp/PT",
+  "title": "Path Traversal",
+  "level": "error",
+  "message": "Unsanitized input from CLI argument flows into os.WriteFile",
+  "file": "Controllers/FileController.cs",
+  "line": 45,
+  "cwe": ["CWE-22"],
+  "precision": "very-high"
+}
+```
+
+#### Extract & Save Normalized JSON File
+```bash
+./acre --snykjson --repo "/path/to/repo"
+```
+*Output*: Creates `snykOutput/Output<datetime>.json`.
+
+#### Extract with Specific Rule ID Filter
+```bash
+./acre --snykjson --repo "/path/to/repo" --ruleid csharp/PT
+```
+*Output*: Filters findings to only include those matching `--ruleid csharp/PT`.
+
+#### Output Directly to Terminal Output (`--cli`)
+```bash
+./acre --snykjson --repo "/path/to/repo" --ruleid csharp/PT --cli
+```
+*Output*: Prints the clean normalized JSON array directly to stdout (useful for real-time agent verification).
+
+---
+
+### Stage 2: Remediation & Verification (`--snyk`)
+
+Ingests the normalized `Output<datetime>.json` file, builds a targeted system prompt for OpenCode, and executes the remediation pipeline.
+
+#### Command Usage
+```bash
+./acre --snyk "snykOutput/Output<datetime>.json" --repo "/path/to/repo" --report "/path/to/report/dir" --REF "/path/to/REF/folder"
+```
+
+#### Key Capabilities:
+* **Reference Guidance (`--REF`)**: Replaces legacy OKF with optional `--REF` path pointing to reference `.md` files or instruction folders.
+* **Targeted Normalized Context**: Passes exact normalized findings (`ruleId`, `title`, `file`, `line`, `message`, `cwe`, `precision`) to OpenCode.
+* **Automated Compilation Checks**: Instructs OpenCode to detect the target repository's native solution build tool (e.g. `dotnet build`, `npm run build`, `go build`, `mvn compile`) and compile the project to verify build success.
+* **Real-time CLI Verification Loop**: OpenCode verifies vulnerability resolution during execution by running `./acre --snykjson --repo . --ruleid <ruleId> --cli` in the terminal until `[]` (0 findings) is returned.
+* **Verification Scan**: Post-remediation verification matches remaining findings by `ruleId`, `file`, and `line`.
+* **Output Artifacts**: Saves `report.md`, `prompt.md`, `opencode_output.md`, and `logs.md` in `--report`.
+
+---
+
+## OKF Documentation Generator
+
+Supports scanning codebases and generating/updating conformant OKF v0.1 documentation directories under `OKF/`:
+
+```bash
+./acre --okf /path/to/target/repo [--scope /path/to/target/repo/src/SubModule]
+```
+
+---
 
 ## Jira Extractor
 
 A CLI utility under `JiraExtractor` to download and structure incident tickets from Jira:
 
-### Setup
-Configure the following inside your `.env` file:
-```env
-JIRA_PAT=your_jira_personal_access_token
-JIRA_BASE_URL=https://jira.example.com
-```
-
-### Usage
-Build and run the extractor:
 ```bash
-cd "JiraExtractor"
+cd JiraExtractor
 go build -o jira main.go
 ./jira -ticket <TICKET_ID>
 ```
-This generates `<TICKET_ID>.json` with structured ticket fields (summary, description, acceptance criteria, and sorted comments) in the current directory and prints them to stdout.
-
-## Snyk Vulnerability Remediation (`--snyk`)
-
-ACRE includes an automated security vulnerability remediation engine powered by Snyk static code analysis (`snyk code test`).
-
-### Features & Capabilities
-* **Automated Snyk Parsing**: Parses both standard plaintext output from `snyk code test` (extracting Finding IDs, severity tags `[HIGH]`, `[MEDIUM]`, `[LOW]`, `[CRITICAL]`, line numbers, and file paths) and JSON formatted output.
-* **Similarity Vulnerability Grouping**: Groups targeted vulnerabilities by category/rule title and component directory into optimal batches (1 to 10 findings per bunch) sorted by severity priority (`CRITICAL` > `HIGH` > `MEDIUM` > `LOW`).
-* **Configurable Severities (`snyk.Config`)**: Target severities (`HIGH`, `MEDIUM`, `CRITICAL`) are managed in `snyk.Config`.
-* **Interactive OKF Validation & Updates**: If `--OKF` path is passed but missing, prompts interactively in the CLI: `"Cant find OKF, should i proceed without one? Y/N"`. Upon successful vulnerability resolution and verification, automatically appends knowledge records to `OKF/snyk_remediations.md`.
-* **Streamlined Wrapper Architecture**: The orchestrator performs the initial Snyk scan to discover vulnerabilities, constructs a comprehensive system prompt, executes OpenCode once, and runs the final Snyk verification scan to calculate the resolved vulnerability delta.
-* **OpenCode Agentic Remediation**: OpenCode handles vulnerability grouping ("few-bunch" strategy of 1-10 issues per batch), applies minimal & targeted security fixes, verifies native compilation builds, creates/updates OKF documentation, and writes `remediation_details.json`.
-* **Framework & Language Agnostic**: Build compilation checks are dynamically detected and executed by OpenCode according to the repository's native framework (e.g. `dotnet build` for .NET, `npm run build` or `npx tsc` for TS/JS, `go build` for Go, `mvn compile` for Java).
-* **Anti-Hallucination & Safe Early Quit Rule**: System prompt instructs OpenCode to quit safely with `solved: false` and manual recommendations if a vulnerability cannot be safely resolved without breaking core architecture, preventing hallucinated or dummy edits.
-* **Complete Report Package**: Outputs detailed artifacts in the `--report` directory:
-  - `report.md`: Structured breakdown of initial vs final Snyk counts, resolved delta, root cause analysis, and code modifications from `remediation_details.json`.
-  - `prompt.md`: Exact system prompt fed to OpenCode.
-  - `opencode_output.md`: Concatenated raw logs of all OpenCode runs.
-  - `logs.md`: Complete execution trace log of the orchestrator CLI.
-
-### Command Usage
-```bash
-./acre --snyk "/path/to/target/repo" --report "/path/to/report/dir" --OKF "/path/to/okf/folder" --debug 1
-```
-
-#### Parameters
-* `--snyk <full path>` *(Required)*: Path to the target repository to scan and resolve Snyk vulnerabilities for.
-* `--report <full path>` *(Optional)*: Directory path where output reports (`report.md`, `prompt.md`, `opencode_output.md`, `logs.md`) will be saved (defaults to `runs/snyk_report`).
-* `--OKF <full path>` *(Optional)*: Path to OKF documentation directory or file.
-* `--debug <a>` *(Optional)*: Max number of severity-sorted vulnerability bunches to process (e.g. `--debug 1` limits execution to top 1 highest severity bunch; omitted processes all target severity bunches).
-
-
-
-

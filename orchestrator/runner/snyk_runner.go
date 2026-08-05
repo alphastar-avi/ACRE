@@ -1,7 +1,6 @@
 package runner
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,15 +8,14 @@ import (
 	"strings"
 	"time"
 
-	"acre/okf"
 	"acre/opencode"
 	"acre/prompt"
 	"acre/report"
 	"acre/snyk"
 )
 
-// RunSnyk executes the automated Snyk vulnerability remediation workflow as a wrapper.
-func RunSnyk(snykRepoPath, reportDir, okfPath string, debugMaxBunches int) error {
+// RunSnyk executes the updated automated Snyk vulnerability remediation workflow.
+func RunSnyk(snykJsonPath, repoPath, reportDir, refPath string) error {
 	printSnykHeader()
 
 	logBuffer := &strings.Builder{}
@@ -29,86 +27,58 @@ func RunSnyk(snykRepoPath, reportDir, okfPath string, debugMaxBunches int) error
 		logBuffer.WriteString(stripANSI(msg) + "\n")
 	}
 
-	absRepo, err := filepath.Abs(snykRepoPath)
-	if err != nil {
-		return fmt.Errorf("invalid snyk repository path: %w", err)
+	if snykJsonPath == "" {
+		return fmt.Errorf("missing path to normalized Snyk JSON file (e.g. Output<datetime>.json)")
 	}
 
-	// 1. Initial Snyk Scan
-	logPrintln("%s[STEP 1/5]%s %sScanning repository with Snyk Code Test...%s", Cyan, Reset, Bold, Reset)
+	// 1. Read Normalized Findings JSON
+	logPrintln("%s[STEP 1/4]%s %sLoading normalized Snyk JSON findings...%s", Cyan, Reset, Bold, Reset)
+	logPrintln("   Normalized JSON Path: %s", snykJsonPath)
+
+	data, err := os.ReadFile(snykJsonPath)
+	if err != nil {
+		return fmt.Errorf("failed to read normalized Snyk JSON at %s: %w", snykJsonPath, err)
+	}
+
+	var findings []snyk.NormalizedFinding
+	if err := json.Unmarshal(data, &findings); err != nil {
+		return fmt.Errorf("failed to parse normalized Snyk JSON at %s: %w", snykJsonPath, err)
+	}
+
+	absRepo := repoPath
+	if absRepo == "" {
+		absRepo = "."
+	}
+	absRepoPath, err := filepath.Abs(absRepo)
+	if err == nil {
+		absRepo = absRepoPath
+	}
 	logPrintln("   Target Repository: %s", absRepo)
 
-	_, initialReport, scanErr := snyk.RunTest(absRepo)
-	if scanErr != nil {
-		logPrintln("   %s[WARNING]%s Snyk scan execution warning/error: %v", Yellow, Reset, scanErr)
+	logPrintln("   %s[LOADED]%s Total normalized finding(s) targeted: %d", Green, Reset, len(findings))
+	for idx, f := range findings {
+		logPrintln("   - Finding %d: ruleId=%s | title=%s | file=%s:%d", idx+1, f.RuleID, f.Title, f.File, f.Line)
 	}
-
-	logPrintln("   %s[INITIAL SNYK SCAN COMPLETE]%s Total Issues: %d | Open Issues: %d",
-		Green, Reset, initialReport.TotalIssues, initialReport.OpenIssues)
-	logPrintln("   Breakdown -> HIGH: %d | MEDIUM: %d | LOW: %d | CRITICAL: %d",
-		initialReport.Counts["HIGH"], initialReport.Counts["MEDIUM"], initialReport.Counts["LOW"], initialReport.Counts["CRITICAL"])
 	logPrintln("")
 
-	// 2. OKF Check & User Prompt
-	logPrintln("%s[STEP 2/5]%s %sValidating Open Knowledge Format (OKF) Context...%s", Cyan, Reset, Bold, Reset)
-	var okfAbsPath, okfIndex string
-	var hasOKF bool
-
-	if okfPath != "" {
-		if _, statErr := os.Stat(okfPath); os.IsNotExist(statErr) {
-			fmt.Printf("   %s[PROMPT]%s Cant find OKF, should i proceed without one? Y/N: ", Yellow, Reset)
-			reader := bufio.NewReader(os.Stdin)
-			ans, _ := reader.ReadString('\n')
-			ans = strings.TrimSpace(strings.ToUpper(ans))
-			if strings.HasPrefix(ans, "N") {
-				logPrintln("   %s[ABORTED]%s User chose not to proceed without OKF.", Red, Reset)
-				return fmt.Errorf("aborted by user: OKF not found at %s", okfPath)
-			}
-			logPrintln("   %s[INFO]%s Proceeding without pre-existing OKF. OKF documentation will be created by OpenCode upon successful remediation.", Yellow, Reset)
+	// 2. Reference Guidance Check (--REF)
+	logPrintln("%s[STEP 2/4]%s %sChecking Reference (--REF) instructions...%s", Cyan, Reset, Bold, Reset)
+	if refPath != "" {
+		if _, statErr := os.Stat(refPath); statErr != nil {
+			logPrintln("   %s[WARNING]%s Specified REF path not found: %s", Yellow, Reset, refPath)
 		} else {
-			okfAbsPath, okfIndex, hasOKF = okf.LoadOKF(okfPath, absRepo)
+			logPrintln("   %s[REF LOADED]%s Found reference instructions at: %s", Green, Reset, refPath)
 		}
 	} else {
-		okfAbsPath, okfIndex, hasOKF = okf.LoadOKF("", absRepo)
-	}
-
-	if hasOKF {
-		logPrintln("   %s[OKF LOADED]%s Found OKF documentation at: %s", Green, Reset, okfAbsPath)
-	} else {
-		logPrintln("   %s[INFO]%s No OKF index found. OpenCode will create OKF documentation during remediation.", Yellow, Reset)
+		logPrintln("   %s[INFO]%s No --REF reference path supplied.", Yellow, Reset)
 	}
 	logPrintln("")
 
-	// 3. Filter & Group Vulnerabilities into Similarity Bunches
-	logPrintln("%s[STEP 3/5]%s %sGrouping Target Vulnerabilities into Similarity Bunches...%s", Cyan, Reset, Bold, Reset)
-	cfg := snyk.DefaultConfig()
+	// 3. Construct Prompt & Execute OpenCode
+	logPrintln("%s[STEP 3/4]%s %sExecuting OpenCode Remediation Agent...%s", Cyan, Reset, Bold, Reset)
+	snykPrompt := prompt.GenerateSnykPrompt(findings, absRepo, refPath)
 
-	bunches := snyk.GroupIssues(initialReport.Issues, cfg.TargetSeverities)
-	if len(bunches) == 0 {
-		logPrintln("   %s[SUCCESS]%s No targeted vulnerabilities found for remediation!", Green, Reset)
-		return generateSnykReports(reportDir, initialReport, initialReport, nil, "", "", logBuffer.String())
-	}
-
-	totalBunches := len(bunches)
-	if debugMaxBunches > 0 && debugMaxBunches < totalBunches {
-		logPrintln("   %s[DEBUG MODE]%s Processing top %d bunch(es) out of %d total bunches.", Yellow, Reset, debugMaxBunches, totalBunches)
-		bunches = bunches[:debugMaxBunches]
-	} else {
-		logPrintln("   Prepared %d similarity bunch(es) of vulnerabilities for OpenCode.", totalBunches)
-	}
-
-	var targetIssues []snyk.Issue
-	for _, b := range bunches {
-		targetIssues = append(targetIssues, b...)
-	}
-	logPrintln("   Total targeted findings in selected bunch(es): %d", len(targetIssues))
-	logPrintln("")
-
-	// 4. Construct Prompt & Execute OpenCode
-	logPrintln("%s[STEP 4/5]%s %sExecuting OpenCode Remediation Agent...%s", Cyan, Reset, Bold, Reset)
-	snykPrompt := prompt.GenerateSnykPrompt(targetIssues, absRepo, okfAbsPath, okfIndex)
-
-	logPrintln("   Invoking OpenCode (non-interactive)...")
+	logPrintln("   Invoking OpenCode agent...")
 	opencodeOut, err := opencode.Run(snykPrompt, absRepo)
 	opencodeLogBuffer.WriteString(opencodeOut + "\n")
 
@@ -119,41 +89,37 @@ func RunSnyk(snykRepoPath, reportDir, okfPath string, debugMaxBunches int) error
 	}
 	logPrintln("")
 
-	// 5. Final Snyk Verification Scan & Report Generation
-	logPrintln("%s[STEP 5/5]%s %sExecuting Final Snyk Code Test Verification Scan...%s", Cyan, Reset, Bold, Reset)
-	_, finalReport, verifyErr := snyk.RunTest(absRepo)
+	// 4. Verification Scan
+	logPrintln("%s[STEP 4/4]%s %sExecuting Verification Scan with Snyk Code Test...%s", Cyan, Reset, Bold, Reset)
+	postScanBytes, verifyErr := snyk.RunTestJSON(absRepo)
+	var remainingFindings []snyk.NormalizedFinding
 	if verifyErr != nil {
-		logPrintln("   %s[WARNING]%s Final Snyk verification scan error: %v", Yellow, Reset, verifyErr)
+		logPrintln("   %s[WARNING]%s Verification scan execution error: %v", Yellow, Reset, verifyErr)
+	} else if len(postScanBytes) > 0 {
+		remainingFindings, _ = snyk.NormalizeSarifJSON(postScanBytes, "")
 	}
 
-	logPrintln("   %s[FINAL SNYK SCAN COMPLETE]%s Total Issues: %d | Open Issues: %d",
-		Green, Reset, finalReport.TotalIssues, finalReport.OpenIssues)
-	logPrintln("   Breakdown -> HIGH: %d | MEDIUM: %d | LOW: %d | CRITICAL: %d",
-		finalReport.Counts["HIGH"], finalReport.Counts["MEDIUM"], finalReport.Counts["LOW"], finalReport.Counts["CRITICAL"])
+	// Calculate resolved targeted findings by checking ruleId, file, and line
+	resolvedCount := 0
+	var unresolvedFindings []snyk.NormalizedFinding
 
-	resolvedDelta := initialReport.OpenIssues - finalReport.OpenIssues
-	if resolvedDelta > 0 {
-		logPrintln("   %s[REMEDIATION SUCCESS]%s Successfully eliminated %d vulnerability finding(s)!", Green, Reset, resolvedDelta)
-	} else {
-		logPrintln("   %s[INFO]%s Scan complete. Open issues count after fix: %d.", Yellow, Reset, finalReport.OpenIssues)
-
-		// Interactive fallback prompt if initial feed did not eliminate vulnerabilities
-		fmt.Printf("\n   %s[PROMPT]%s Shall i make opencode do the 'snyk code test' on its own and pass the prompt? Y/N: ", Yellow, Reset)
-		var userChoice string
-		fmt.Scanln(&userChoice)
-		userChoice = strings.TrimSpace(strings.ToUpper(userChoice))
-		if userChoice == "Y" || userChoice == "YES" {
-			logPrintln("\n   %s[FALLBACK]%s Executing OpenCode self-driven Snyk scan & remediation...", Cyan, Reset)
-			fallbackPrompt := fmt.Sprintf("Execute `snyk code test` directly in the target repository at `%s` to discover open security vulnerabilities matching severities (HIGH, MEDIUM, CRITICAL). Apply minimal security fixes, verify native compilation build, update/create OKF documentation, write `remediation_details.json`, and exit!", absRepo)
-			fallbackOutput, fErr := opencode.Run(fallbackPrompt, absRepo)
-			opencodeLogBuffer.WriteString("\n--- FALLBACK RUN OUTPUT ---\n" + fallbackOutput)
-			if fErr != nil {
-				logPrintln("   %s[WARNING]%s Fallback OpenCode execution error: %v", Red, Reset, fErr)
+	for _, target := range findings {
+		found := false
+		for _, post := range remainingFindings {
+			if post.RuleID == target.RuleID && post.File == target.File && post.Line == target.Line {
+				found = true
+				break
 			}
-			// Re-run final Snyk scan verification
-			_, finalReport, _ = snyk.RunTest(absRepo)
+		}
+		if !found {
+			resolvedCount++
+		} else {
+			unresolvedFindings = append(unresolvedFindings, target)
 		}
 	}
+
+	logPrintln("   %s[VERIFICATION COMPLETE]%s Target findings: %d | Resolved: %d | Unresolved: %d",
+		Green, Reset, len(findings), resolvedCount, len(unresolvedFindings))
 	logPrintln("")
 
 	// Read remediation_details.json from repo
@@ -173,37 +139,43 @@ func RunSnyk(snykRepoPath, reportDir, okfPath string, debugMaxBunches int) error
 		detailsPtr = &details
 	}
 
-	return generateSnykReports(reportDir, initialReport, finalReport, detailsPtr, snykPrompt, opencodeLogBuffer.String(), logBuffer.String())
+	return generateSnykReports(reportDir, absRepo, findings, unresolvedFindings, resolvedCount, detailsPtr, snykPrompt, opencodeLogBuffer.String(), logBuffer.String())
 }
 
-func generateSnykReports(reportDir string, initialReport, finalReport *snyk.SnykReport, details *report.RemediationDetails, promptOutput, opencodeOutput, logOutput string) error {
+func generateSnykReports(reportDir string, repoPath string, initialFindings, unresolvedFindings []snyk.NormalizedFinding, resolvedCount int, details *report.RemediationDetails, promptOutput, opencodeOutput, logOutput string) error {
 	if err := os.MkdirAll(reportDir, 0755); err != nil {
 		return fmt.Errorf("failed to create report directory: %w", err)
 	}
 
-	resolvedDelta := initialReport.OpenIssues - finalReport.OpenIssues
-
-	// Write report.md
 	var reportBuilder strings.Builder
-	reportBuilder.WriteString("# ACRE Snyk Code Test Vulnerability Remediation Report\n\n")
+	reportBuilder.WriteString("# ACRE Snyk Code Test Remediation Report\n\n")
 	reportBuilder.WriteString(fmt.Sprintf("* **Date:** %s\n", time.Now().Format("2006-01-02 15:04:05")))
-	reportBuilder.WriteString(fmt.Sprintf("* **Target Repository:** `%s`\n\n", initialReport.ProjectPath))
+	reportBuilder.WriteString(fmt.Sprintf("* **Target Repository:** `%s`\n\n", repoPath))
 
-	reportBuilder.WriteString("## Initial Vulnerability Summary (Before Remediation)\n")
-	reportBuilder.WriteString(fmt.Sprintf("* **Total Issues:** %d\n", initialReport.TotalIssues))
-	reportBuilder.WriteString(fmt.Sprintf("* **Open Issues:** %d\n", initialReport.OpenIssues))
-	reportBuilder.WriteString(fmt.Sprintf("* **HIGH Severity:** %d\n", initialReport.Counts["HIGH"]))
-	reportBuilder.WriteString(fmt.Sprintf("* **MEDIUM Severity:** %d\n", initialReport.Counts["MEDIUM"]))
-	reportBuilder.WriteString(fmt.Sprintf("* **LOW Severity:** %d\n", initialReport.Counts["LOW"]))
-	reportBuilder.WriteString(fmt.Sprintf("* **CRITICAL Severity:** %d\n\n", initialReport.Counts["CRITICAL"]))
+	reportBuilder.WriteString("## Initial Vulnerability Findings Summary\n")
+	reportBuilder.WriteString(fmt.Sprintf("* **Targeted Findings Count:** %d\n\n", len(initialFindings)))
+	if len(initialFindings) > 0 {
+		reportBuilder.WriteString("| Rule ID | Title | File | Line | Level |\n")
+		reportBuilder.WriteString("| ------- | ----- | ---- | ---- | ----- |\n")
+		for _, f := range initialFindings {
+			reportBuilder.WriteString(fmt.Sprintf("| `%s` | %s | `%s` | %d | %s |\n", f.RuleID, f.Title, f.File, f.Line, f.Level))
+		}
+		reportBuilder.WriteString("\n")
+	}
 
-	reportBuilder.WriteString("## Verification Summary (After Remediation)\n")
-	reportBuilder.WriteString(fmt.Sprintf("* **Total Remaining Open Issues:** %d\n", finalReport.OpenIssues))
-	reportBuilder.WriteString(fmt.Sprintf("* **Vulnerabilities Resolved Delta:** %d\n", resolvedDelta))
-	reportBuilder.WriteString(fmt.Sprintf("* **HIGH Severity Remaining:** %d\n", finalReport.Counts["HIGH"]))
-	reportBuilder.WriteString(fmt.Sprintf("* **MEDIUM Severity Remaining:** %d\n", finalReport.Counts["MEDIUM"]))
-	reportBuilder.WriteString(fmt.Sprintf("* **LOW Severity Remaining:** %d\n", finalReport.Counts["LOW"]))
-	reportBuilder.WriteString(fmt.Sprintf("* **CRITICAL Severity Remaining:** %d\n\n", finalReport.Counts["CRITICAL"]))
+	reportBuilder.WriteString("## Verification Summary (After Remediation & Snyk Scan)\n")
+	reportBuilder.WriteString(fmt.Sprintf("* **Resolved Findings Count:** %d\n", resolvedCount))
+	reportBuilder.WriteString(fmt.Sprintf("* **Remaining Unresolved Findings:** %d\n\n", len(unresolvedFindings)))
+
+	if len(unresolvedFindings) > 0 {
+		reportBuilder.WriteString("### Remaining Unresolved Findings\n")
+		reportBuilder.WriteString("| Rule ID | Title | File | Line | Level |\n")
+		reportBuilder.WriteString("| ------- | ----- | ---- | ---- | ----- |\n")
+		for _, f := range unresolvedFindings {
+			reportBuilder.WriteString(fmt.Sprintf("| `%s` | %s | `%s` | %d | %s |\n", f.RuleID, f.Title, f.File, f.Line, f.Level))
+		}
+		reportBuilder.WriteString("\n")
+	}
 
 	reportBuilder.WriteString("## OpenCode Vulnerability Analysis & Fix Details\n")
 	if details != nil {
@@ -287,4 +259,3 @@ func stripANSI(str string) string {
 	}
 	return b.String()
 }
-
