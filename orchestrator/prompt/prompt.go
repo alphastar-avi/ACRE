@@ -1,6 +1,7 @@
 package prompt
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -128,85 +129,95 @@ func Generate(t *ticket.Ticket, repoPath string, enableRecs bool) string {
 	return builder.String()
 }
 
-// GenerateSnykPrompt constructs a comprehensive non-interactive remediation prompt for OpenCode to resolve Snyk vulnerabilities.
-func GenerateSnykPrompt(issues []snyk.Issue, repoPath string, okfPath string, okfContent string) string {
+// GenerateSnykPrompt constructs a clear, robust remediation prompt for OpenCode to resolve targeted Snyk vulnerabilities.
+func GenerateSnykPrompt(findings []snyk.NormalizedFinding, repoPath string, refPath string) string {
 	var builder strings.Builder
 
-	builder.WriteString(fmt.Sprintf("Fix the %d Snyk security vulnerability finding(s) listed below in the target repository at `%s`.\n\n", len(issues), repoPath))
+	builder.WriteString(fmt.Sprintf("Fix the %d normalized Snyk security vulnerability finding(s) listed below in the target repository at `%s`.\n\n", len(findings), repoPath))
 	builder.WriteString("AUTOMATED NON-INTERACTIVE DIRECTIVE:\n")
 	builder.WriteString("- You are executing in fully automated non-interactive remediation mode inside ACRE.\n")
 	builder.WriteString("- DO NOT ask questions, request user confirmation, or ask for Snyk reports or tech stack clarification.\n")
-	builder.WriteString("- ALL targeted Snyk findings, file paths, line numbers, and vulnerability descriptions are explicitly provided below.\n")
-	builder.WriteString("- IMMEDIATELY inspect the repository files, edit the source code to remediate the findings, verify project compilation, update/create OKF documentation, write `remediation_details.json`, and exit!\n\n")
+	builder.WriteString("- ALL targeted Snyk findings (ruleId, title, level, message, file, line, cwe, precision) are explicitly provided below in JSON format.\n")
+	builder.WriteString("- IMMEDIATELY inspect the repository files, edit the source code to remediate the findings, verify project compilation/build, re-verify with Snyk code test for the targeted ruleId(s), write `remediation_details.json`, and exit!\n\n")
 
 	builder.WriteString(fmt.Sprintf("Repository Path: %s\n\n", repoPath))
 
-	if okfContent != "" {
-		builder.WriteString("## Codebase Architecture & Context (Open Knowledge Format - OKF)\n")
-		builder.WriteString("Refer to the following OKF documentation index for codebase conventions, module boundaries, and architectural patterns:\n")
-		if okfPath != "" {
-			builder.WriteString(fmt.Sprintf("OKF Path: %s\n\n", okfPath))
-		}
-		builder.WriteString("```markdown\n")
-		builder.WriteString(okfContent)
-		builder.WriteString("\n```\n\n")
-		builder.WriteString("### OKF Usage Guidelines:\n")
-		builder.WriteString("1. **Reference Knowledge**: Use the OKF documentation to understand existing architecture, design patterns, and module guidelines.\n")
-		builder.WriteString("2. **Mandatory OKF Creation / Update**: Upon successfully resolving these vulnerabilities, if you gain key insights, identify specific fix patterns, or establish security practices for this module, you MUST create or update concept files inside the repository's `OKF/` folder (e.g. `OKF/snyk_remediations.md` or update `OKF/index.md`). Maintain OKF v0.1 format with YAML frontmatter.\n\n")
-	} else {
-		builder.WriteString("## OKF Knowledge Creation Guidelines\n")
-		builder.WriteString("If no `OKF/` documentation folder exists in the repository, you SHOULD create one at `OKF/snyk_remediations.md` (and `OKF/index.md`) documenting the security findings, fixes applied, and architectural patterns used for future reference.\n\n")
-	}
-
-	builder.WriteString("## Targeted Snyk Code Vulnerabilities\n")
-	builder.WriteString(fmt.Sprintf("Fix the following %d vulnerability finding(s):\n\n", len(issues)))
-
-	for idx, issue := range issues {
-		builder.WriteString(fmt.Sprintf("--------------------------------------------------\n"))
-		builder.WriteString(fmt.Sprintf("Vulnerability Finding %d/%d:\n", idx+1, len(issues)))
-		if issue.RawText != "" {
-			builder.WriteString(strings.TrimSpace(issue.RawText) + "\n")
-		} else {
-			builder.WriteString(fmt.Sprintf(" ✗ [%s] %s\n", issue.Severity, issue.Title))
-			if issue.FindingID != "" {
-				builder.WriteString(fmt.Sprintf("   Finding ID: %s\n", issue.FindingID))
+	// Include reference guidance if provided via --REF
+	if refPath != "" {
+		info, err := os.Stat(refPath)
+		if err == nil {
+			builder.WriteString("## Reference & Standard Recommended Instructions\n")
+			builder.WriteString(fmt.Sprintf("Reference Location: %s\n", refPath))
+			if !info.IsDir() {
+				if content, rErr := os.ReadFile(refPath); rErr == nil {
+					builder.WriteString("```markdown\n")
+					builder.WriteString(string(content))
+					builder.WriteString("\n```\n\n")
+				}
+			} else {
+				// Search for .md files in the reference directory
+				entries, _ := os.ReadDir(refPath)
+				for _, entry := range entries {
+					if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".md") {
+						p := filepath.Join(refPath, entry.Name())
+						if content, rErr := os.ReadFile(p); rErr == nil {
+							builder.WriteString(fmt.Sprintf("### Reference File: %s\n", entry.Name()))
+							builder.WriteString("```markdown\n")
+							builder.WriteString(string(content))
+							builder.WriteString("\n```\n\n")
+						}
+					}
+				}
 			}
-			builder.WriteString(fmt.Sprintf("   Path: %s, line %d\n", issue.Path, issue.LineNumber))
-			builder.WriteString(fmt.Sprintf("   Info: %s\n", issue.Info))
 		}
-		builder.WriteString(fmt.Sprintf("--------------------------------------------------\n\n"))
 	}
 
-	builder.WriteString("## Strict Execution & Remediation Workflow\n")
-	builder.WriteString("1. **Intelligent Vulnerability Grouping (" + `"` + "Few Bunch" + `"` + " Strategy)**:\n")
-	builder.WriteString("   - Analyze all the findings listed above. Group similar vulnerabilities together by vulnerability category (e.g. Hardcoded Credentials, SSRF, Deserialization, Data Leakage) and module directory.\n")
-	builder.WriteString("   - Tackle vulnerabilities batch by batch (picking 1 to 10 findings per bunch depending on your confidence).\n\n")
-	builder.WriteString("2. **Minimal & Sufficient Modifications**:\n")
-	builder.WriteString("   - Focus strictly on resolving the Snyk security findings. Do NOT overdo, refactor unrelated logic, or make cosmetic changes.\n")
-	builder.WriteString("   - Ensure changes preserve existing business logic and framework behavior. Mirror the exact indentation, style, brackets, and patterns of the existing codebase.\n\n")
-	builder.WriteString("3. **Internal Build & Compilation Verification**:\n")
-	builder.WriteString("   - After applying fixes for a batch, detect and execute the project's native solution build/compilation command (e.g. `dotnet build` for .NET, `npm run build` or `npx tsc` for TS/JS, `go build` for Go, `mvn compile` for Java) to verify that your modifications compile without errors.\n")
-	builder.WriteString("   - If compilation fails, correct the syntax or type errors before proceeding.\n\n")
-	builder.WriteString("4. **OKF Documentation Update**:\n")
-	builder.WriteString("   - Once fixes are complete and verified, create or update `OKF/snyk_remediations.md` and `OKF/index.md` in the target repository detailing the fixes, root causes, and security patterns.\n\n")
-	builder.WriteString("5. **Anti-Hallucination & Safe Early Quit Rule**:\n")
-	builder.WriteString("   - If you get stuck, cannot locate the target source files/symbols, or determine that a vulnerability cannot be safely resolved without breaking core application architecture, DO NOT hallucinate edits or write dummy cosmetic changes.\n")
-	builder.WriteString("   - Stop modifications immediately, set `\"solved\": false` in `remediation_details.json`, document the exact diagnostic reason under `\"recommendations\"`, and exit gracefully.\n\n")
-	builder.WriteString("6. **Mandatory Reporting File (`remediation_details.json`)**:\n")
-	builder.WriteString("   - Before finishing, you MUST create or update a JSON file named `remediation_details.json` at the root of the repository with full detailed analysis. It MUST follow this structure:\n")
+	builder.WriteString("## Targeted Snyk Normalized Findings\n")
+	builder.WriteString("Below is the exact normalized JSON finding structure passed for remediation:\n\n")
+
+	normBytes, err := json.MarshalIndent(findings, "", "  ")
+	if err == nil {
+		builder.WriteString("```json\n")
+		builder.WriteString(string(normBytes))
+		builder.WriteString("\n```\n\n")
+	} else {
+		for idx, f := range findings {
+			builder.WriteString(fmt.Sprintf("%d. ruleId: %s | title: %s | file: %s | line: %d | level: %s | message: %s\n",
+				idx+1, f.RuleID, f.Title, f.File, f.Line, f.Level, f.Message))
+		}
+		builder.WriteString("\n")
+	}
+
+	builder.WriteString("## Execution, Build & Verification Workflow\n")
+	builder.WriteString("1. **Code Modification**:\n")
+	builder.WriteString("   - For each finding, inspect the target `file` at line `line` (and surrounding context).\n")
+	builder.WriteString("   - Apply minimal, robust security fixes matching the ruleId, title, and message while preserving existing business logic.\n\n")
+	builder.WriteString("2. **Module Build & Compilation Verification**:\n")
+	builder.WriteString("   - Analyze the stack of the target repository and detect the native solution build command (e.g. `dotnet build` for C#/.NET, `npm run build` or `npx tsc` for TS/JS, `go build` for Go, `mvn compile` or `gradle build` for Java).\n")
+	builder.WriteString("   - Execute the build command to ensure your code changes compile cleanly without errors.\n")
+	builder.WriteString("   - If build fails, fix any syntax, type, or compilation errors before proceeding.\n\n")
+	builder.WriteString("3. **Snyk Targeted Verification Scan**:\n")
+	builder.WriteString("   - To verify if the vulnerability for a target `ruleId` has been eliminated, execute `./acre --snykjson --repo . --ruleid <ruleId> --cli` (or run `snyk code test --json`).\n")
+	builder.WriteString("   - The `--cli` flag outputs the current normalized JSON findings for that specific `ruleId` directly to terminal output.\n")
+	builder.WriteString("   - Continue iterating code fixes and build verification until `./acre --snykjson --repo . --ruleid <ruleId> --cli` returns `[]` (0 remaining findings for that `ruleId`).\n\n")
+	builder.WriteString("4. **Anti-Hallucination Rule**:\n")
+	builder.WriteString("   - If you cannot safely resolve a vulnerability without breaking critical functionality, DO NOT hallucinate fixes or make dummy edits.\n")
+	builder.WriteString("   - Set `\"solved\": false` in `remediation_details.json`, explain the details under `\"recommendations\"`, and exit.\n\n")
+	builder.WriteString("5. **Mandatory Reporting File (`remediation_details.json`)**:\n")
+	builder.WriteString("   - Create or update `remediation_details.json` at the root of the repository before completing execution. Schema:\n")
 	builder.WriteString("```json\n")
 	builder.WriteString("{\n")
-	builder.WriteString("  \"understood_issue\": \"Comprehensive, detailed summary of the Snyk security findings addressed across all batches\",\n")
-	builder.WriteString("  \"potential_issue\": \"Root cause analysis explaining why the vulnerabilities existed in the code\",\n")
-	builder.WriteString("  \"approach\": \"Detailed explanation of exact security fixes applied (e.g. safe deserialization settings, environment variable secrets, input sanitization)\",\n")
+	builder.WriteString("  \"understood_issue\": \"Summary of Snyk security findings addressed\",\n")
+	builder.WriteString("  \"potential_issue\": \"Root cause analysis explaining why the vulnerabilities existed\",\n")
+	builder.WriteString("  \"approach\": \"Detailed explanation of exact security fixes applied\",\n")
 	builder.WriteString("  \"code_changes\": [\n")
 	builder.WriteString("    {\n")
 	builder.WriteString("      \"file\": \"relative/path/to/modified/file.cs\",\n")
-	builder.WriteString("      \"description\": \"Detailed explanation of exact security changes made in this file\"\n")
+	builder.WriteString("      \"description\": \"Detailed explanation of security changes made in this file\"\n")
 	builder.WriteString("    }\n")
 	builder.WriteString("  ],\n")
 	builder.WriteString("  \"confidence_score\": 95,\n")
-	builder.WriteString("  \"confidence_justification\": \"Detailed justification for confidence in the fix\",\n")
+	builder.WriteString("  \"confidence_justification\": \"Justification for confidence in fix\",\n")
 	builder.WriteString("  \"solved\": true,\n")
 	builder.WriteString("  \"wrote_tests\": false\n")
 	builder.WriteString("}\n")
@@ -214,3 +225,4 @@ func GenerateSnykPrompt(issues []snyk.Issue, repoPath string, okfPath string, ok
 
 	return builder.String()
 }
+

@@ -8,10 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"strconv"
-
 	"acre/okf"
 	"acre/runner"
+	"acre/snyk"
 )
 
 func loadEnv() {
@@ -63,36 +62,50 @@ func main() {
 	enableRecs := flag.Bool("r", false, "Analyze codebase, identify root cause, write structured recommendations report, and open a PR without changing codebase files")
 	enableTest := flag.Bool("test", false, "Test mode: analyze codebase, compile solution, generate report & manual PR URL without git operations or running regression tests")
 
-	// Snyk remediation flags
-	snykRepoPath := flag.String("snyk", "", "Path to repository to scan and resolve Snyk code test vulnerabilities for")
+	// Snyk workflow flags
+	enableSnykJson := flag.Bool("snykjson", false, "Run 'snyk code test --json', normalize findings SARIF, and output to snykOutput/Output<datetime>.json")
+	ruleIdFlag := flag.String("ruleid", "", "Optional rule ID filter for --snykjson (e.g. csharp/PT)")
+	cliFlag := flag.Bool("cli", false, "Print normalized findings JSON directly to stdout for CLI consumption")
+	snykJsonPath := flag.String("snyk", "", "Path to normalized Snyk JSON file (Output<datetime>.json) for remediation")
 	reportPath := flag.String("report", "", "Path to directory to output final Snyk remediation reports (report.md, opencode_output.md, logs.md)")
-	okfPathUpper := flag.String("OKF", "", "Optional path to OKF documentation directory or file")
-	debugFlag := flag.String("debug", "", "Optional max number of high severity vulnerability bunches to process (e.g. 1 or 'a')")
+	refPathUpper := flag.String("REF", "", "Optional path to reference directory or .md file")
+	refPathLower := flag.String("ref", "", "Optional path to reference directory or .md file")
 
 	flag.Parse()
 
-	// Check if opencode is installed in system PATH
+	// Handle --snykjson flag first (does not require opencode CLI for JSON extraction)
+	if *enableSnykJson {
+		targetRepo := *repoPath
+		if targetRepo == "" {
+			targetRepo = "."
+		}
+		outputPath, err := snyk.GenerateSnykJSON(targetRepo, *ruleIdFlag, *cliFlag)
+		if err != nil {
+			log.Fatalf("Snyk JSON generation failed: %v", err)
+		}
+		if !*cliFlag {
+			log.Printf("Normalized Snyk JSON successfully generated at: %s", outputPath)
+		}
+		os.Exit(0)
+	}
+
+	// Check if opencode is installed in system PATH for agent workflows
 	if _, err := exec.LookPath("opencode"); err != nil {
 		log.Fatalf("Error: 'opencode' executable not found in system PATH. ACRE requires the OpenCode CLI to be installed. Please install it first (e.g. 'brew install opencode').")
 	}
 
 	// If --snyk flag is specified, run Snyk remediation pipeline
-	if *snykRepoPath != "" {
+	if *snykJsonPath != "" {
 		outReportDir := *reportPath
 		if outReportDir == "" {
 			outReportDir = "runs/snyk_report"
 		}
-		debugMaxBunches := 0
-		if *debugFlag != "" {
-			if num, err := strconv.Atoi(*debugFlag); err == nil {
-				debugMaxBunches = num
-			} else {
-				// If debug is set to a single non-numeric token like "a" or "1", default to 1 bunch
-				debugMaxBunches = 1
-			}
+		ref := *refPathUpper
+		if ref == "" {
+			ref = *refPathLower
 		}
 
-		err := runner.RunSnyk(*snykRepoPath, outReportDir, *okfPathUpper, debugMaxBunches)
+		err := runner.RunSnyk(*snykJsonPath, *repoPath, outReportDir, ref)
 		if err != nil {
 			log.Fatalf("Snyk Vulnerability Remediation failed: %v", err)
 		}

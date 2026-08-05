@@ -181,3 +181,75 @@ func TestGroupIssues(t *testing.T) {
 		t.Errorf("Expected HIGH severity issue in bunch")
 	}
 }
+
+func TestNormalizeSarifJSON(t *testing.T) {
+	sampleSarif := `{
+		"version": "2.1.0",
+		"runs": [{
+			"tool": {
+				"driver": {
+					"rules": [{
+						"id": "csharp/PT",
+						"shortDescription": { "text": "Path Traversal" },
+						"properties": { "cwe": ["CWE-22"], "precision": "very-high" }
+					}, {
+						"id": "csharp/HardcodedSecret",
+						"shortDescription": { "text": "Hardcoded Secret" },
+						"properties": { "cwe": ["CWE-547"], "precision": "high" }
+					}]
+				}
+			},
+			"results": [{
+				"ruleId": "csharp/PT",
+				"level": "error",
+				"message": { "text": "Unsanitized path used" },
+				"locations": [{
+					"physicalLocation": {
+						"artifactLocation": { "uri": "Controllers/FileController.cs" },
+						"region": { "startLine": 45 }
+					}
+				}]
+			}, {
+				"ruleId": "csharp/HardcodedSecret",
+				"level": "error",
+				"message": { "text": "Hardcoded API key" },
+				"locations": [{
+					"physicalLocation": {
+						"artifactLocation": { "uri": "Config/Secrets.cs" },
+						"region": { "startLine": 12 }
+					}
+				}]
+			}]
+		}]
+	}`
+
+	findings, err := NormalizeSarifJSON([]byte(sampleSarif), "")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	if len(findings) != 2 {
+		t.Fatalf("Expected 2 findings, got %d", len(findings))
+	}
+
+	f1 := findings[0]
+	if f1.RuleID != "csharp/PT" || f1.Title != "Path Traversal" || f1.File != "Controllers/FileController.cs" || f1.Line != 45 {
+		t.Errorf("Unexpected finding 1 data: %+v", f1)
+	}
+	if len(f1.CWE) != 1 || f1.CWE[0] != "CWE-22" {
+		t.Errorf("Unexpected CWE: %+v", f1.CWE)
+	}
+
+	// Test ruleId filter
+	filtered, err := NormalizeSarifJSON([]byte(sampleSarif), "csharp/PT")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if len(filtered) != 1 {
+		t.Fatalf("Expected 1 filtered finding, got %d", len(filtered))
+	}
+	if filtered[0].RuleID != "csharp/PT" {
+		t.Errorf("Expected ruleId csharp/PT, got %s", filtered[0].RuleID)
+	}
+}
+
