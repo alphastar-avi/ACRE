@@ -443,8 +443,8 @@ func TestNormalizeSarifJSON_SampleFileIntegration(t *testing.T) {
 	if sqliFinding.Line != 402 {
 		t.Errorf("Expected line 402, got %d", sqliFinding.Line)
 	}
-	if len(sqliFinding.CodeFlow) != 29 {
-		t.Errorf("Expected 29 code flow locations for SQLi finding, got %d", len(sqliFinding.CodeFlow))
+	if len(sqliFinding.CodeFlow) != 20 {
+		t.Errorf("Expected 20 deduplicated code flow locations for SQLi finding, got %d", len(sqliFinding.CodeFlow))
 	}
 
 	// Check first and last codeFlow locations

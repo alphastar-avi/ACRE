@@ -35,6 +35,9 @@ snykOutput.json
 orchestrator/snykOutput/
 orchestrator/snykOutput.json
 orchestrator/testdata_sample.json
+orchestrator/testdata_findings.json
+*testdata*
+*findings.json
 testdata_sample.json
 sample.json
 *.sarif
