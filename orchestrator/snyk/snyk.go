@@ -259,11 +259,15 @@ func NormalizeSarifJSON(sarifBytes []byte, ruleIdFilter string) ([]NormalizedFin
 							if endL <= 0 {
 								endL = startL
 							}
-							codeFlow = append(codeFlow, CodeFlowLocation{
+							loc := CodeFlowLocation{
 								File:      locURI,
 								StartLine: startL,
 								EndLine:   endL,
-							})
+							}
+							// Deduplicate consecutive identical line steps caused by sub-expression AST column spans
+							if len(codeFlow) == 0 || codeFlow[len(codeFlow)-1] != loc {
+								codeFlow = append(codeFlow, loc)
+							}
 						}
 					}
 				}
