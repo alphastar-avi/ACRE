@@ -11,16 +11,25 @@ import (
 	"time"
 )
 
+// CodeFlowLocation represents a single source code location step in a taint/data flow.
+type CodeFlowLocation struct {
+	File      string `json:"file"`
+	StartLine int    `json:"startLine"`
+	EndLine   int    `json:"endLine"`
+}
+
 // NormalizedFinding represents a normalized Snyk vulnerability finding.
 type NormalizedFinding struct {
-	RuleID    string   `json:"ruleId"`
-	Title     string   `json:"title"`
-	Level     string   `json:"level"`
-	Message   string   `json:"message"`
-	File      string   `json:"file"`
-	Line      int      `json:"line"`
-	CWE       []string `json:"cwe"`
-	Precision string   `json:"precision"`
+	RuleID    string             `json:"ruleId"`
+	Title     string             `json:"title"`
+	Level     string             `json:"level"`
+	Message   string             `json:"message"`
+	File      string             `json:"file"`
+	Line      int                `json:"line"`
+	CWE       []string           `json:"cwe"`
+	Precision string             `json:"precision"`
+	FindingID string             `json:"findingId"`
+	CodeFlow  []CodeFlowLocation `json:"codeFlow"`
 }
 
 // SARIF 2.1.0 JSON Structures for Snyk output
@@ -37,23 +46,57 @@ type SarifRule struct {
 }
 
 type SarifLocation struct {
+	ID               int `json:"id"`
 	PhysicalLocation struct {
 		ArtifactLocation struct {
-			URI string `json:"uri"`
+			URI       string `json:"uri"`
+			URIBaseID string `json:"uriBaseId"`
 		} `json:"artifactLocation"`
 		Region struct {
-			StartLine int `json:"startLine"`
+			StartLine   int `json:"startLine"`
+			EndLine     int `json:"endLine"`
+			StartColumn int `json:"startColumn"`
+			EndColumn   int `json:"endColumn"`
 		} `json:"region"`
 	} `json:"physicalLocation"`
 }
 
+type SarifThreadFlowLocation struct {
+	Location SarifLocation `json:"location"`
+	PhysicalLocation struct {
+		ArtifactLocation struct {
+			URI       string `json:"uri"`
+			URIBaseID string `json:"uriBaseId"`
+		} `json:"artifactLocation"`
+		Region struct {
+			StartLine   int `json:"startLine"`
+			EndLine     int `json:"endLine"`
+			StartColumn int `json:"startColumn"`
+			EndColumn   int `json:"endColumn"`
+		} `json:"region"`
+	} `json:"physicalLocation"`
+}
+
+type SarifThreadFlow struct {
+	Locations []SarifThreadFlowLocation `json:"locations"`
+}
+
+type SarifCodeFlow struct {
+	ThreadFlows []SarifThreadFlow `json:"threadFlows"`
+}
+
 type SarifResult struct {
-	RuleID  string `json:"ruleId"`
-	Level   string `json:"level"`
-	Message struct {
-		Text string `json:"text"`
+	RuleID       string                 `json:"ruleId"`
+	RuleIndex    int                    `json:"ruleIndex"`
+	Level        string                 `json:"level"`
+	Message      struct {
+		Text     string `json:"text"`
+		Markdown string `json:"markdown"`
 	} `json:"message"`
-	Locations []SarifLocation `json:"locations"`
+	Locations    []SarifLocation        `json:"locations"`
+	Fingerprints map[string]string      `json:"fingerprints"`
+	CodeFlows    []SarifCodeFlow        `json:"codeFlows"`
+	Properties   map[string]interface{} `json:"properties"`
 }
 
 type SarifRun struct {
@@ -180,6 +223,52 @@ func NormalizeSarifJSON(sarifBytes []byte, ruleIdFilter string) ([]NormalizedFin
 				precision = rule.Properties.Precision
 			}
 
+			// Extract Finding ID (snyk/asset/finding/v1 or identity)
+			findingID := ""
+			if result.Fingerprints != nil {
+				if val, ok := result.Fingerprints["snyk/asset/finding/v1"]; ok && val != "" {
+					findingID = val
+				} else if val, ok := result.Fingerprints["identity"]; ok && val != "" {
+					findingID = val
+				} else if val, ok := result.Fingerprints["0"]; ok && val != "" {
+					findingID = val
+				}
+			}
+			if findingID == "" && result.Properties != nil {
+				if val, ok := result.Properties["identity"].(string); ok && val != "" {
+					findingID = val
+				}
+			}
+
+			// Extract CodeFlow preserving the exact sequence supplied by Snyk
+			codeFlow := make([]CodeFlowLocation, 0)
+			for _, cf := range result.CodeFlows {
+				for _, tf := range cf.ThreadFlows {
+					for _, tfLoc := range tf.Locations {
+						locURI := tfLoc.Location.PhysicalLocation.ArtifactLocation.URI
+						startL := tfLoc.Location.PhysicalLocation.Region.StartLine
+						endL := tfLoc.Location.PhysicalLocation.Region.EndLine
+
+						if locURI == "" {
+							locURI = tfLoc.PhysicalLocation.ArtifactLocation.URI
+							startL = tfLoc.PhysicalLocation.Region.StartLine
+							endL = tfLoc.PhysicalLocation.Region.EndLine
+						}
+
+						if locURI != "" {
+							if endL <= 0 {
+								endL = startL
+							}
+							codeFlow = append(codeFlow, CodeFlowLocation{
+								File:      locURI,
+								StartLine: startL,
+								EndLine:   endL,
+							})
+						}
+					}
+				}
+			}
+
 			findings = append(findings, NormalizedFinding{
 				RuleID:    result.RuleID,
 				Title:     title,
@@ -189,6 +278,8 @@ func NormalizeSarifJSON(sarifBytes []byte, ruleIdFilter string) ([]NormalizedFin
 				Line:      line,
 				CWE:       cwe,
 				Precision: precision,
+				FindingID: findingID,
+				CodeFlow:  codeFlow,
 			})
 		}
 	}

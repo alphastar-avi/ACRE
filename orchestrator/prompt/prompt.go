@@ -137,8 +137,8 @@ func GenerateSnykPrompt(findings []snyk.NormalizedFinding, repoPath string, refP
 	builder.WriteString("AUTOMATED NON-INTERACTIVE DIRECTIVE:\n")
 	builder.WriteString("- You are executing in fully automated non-interactive remediation mode inside ACRE.\n")
 	builder.WriteString("- DO NOT ask questions, request user confirmation, or ask for Snyk reports or tech stack clarification.\n")
-	builder.WriteString("- ALL targeted Snyk findings (ruleId, title, level, message, file, line, cwe, precision) are explicitly provided below in JSON format.\n")
-	builder.WriteString("- IMMEDIATELY inspect the repository files, edit the source code to remediate the findings, verify project compilation/build, re-verify with Snyk code test for the targeted ruleId(s), write `remediation_details.json`, and exit!\n\n")
+	builder.WriteString("- ALL targeted Snyk findings (findingId, ruleId, title, level, message, file, line, cwe, precision, codeFlow) are explicitly provided below in JSON format.\n")
+	builder.WriteString("- IMMEDIATELY inspect the repository files, trace data flows via `codeFlow` when available, edit the source code to remediate the findings, verify project compilation/build, re-verify with Snyk code test for the targeted ruleId(s), write `remediation_details.json`, and exit!\n\n")
 
 	builder.WriteString(fmt.Sprintf("Repository Path: %s\n\n", repoPath))
 
@@ -182,16 +182,19 @@ func GenerateSnykPrompt(findings []snyk.NormalizedFinding, repoPath string, refP
 		builder.WriteString("\n```\n\n")
 	} else {
 		for idx, f := range findings {
-			builder.WriteString(fmt.Sprintf("%d. ruleId: %s | title: %s | file: %s | line: %d | level: %s | message: %s\n",
-				idx+1, f.RuleID, f.Title, f.File, f.Line, f.Level, f.Message))
+			builder.WriteString(fmt.Sprintf("%d. findingId: %s | ruleId: %s | title: %s | file: %s | line: %d | level: %s | message: %s\n",
+				idx+1, f.FindingID, f.RuleID, f.Title, f.File, f.Line, f.Level, f.Message))
 		}
 		builder.WriteString("\n")
 	}
 
 	builder.WriteString("## Execution, Build & Verification Workflow\n")
-	builder.WriteString("1. **Code Modification**:\n")
-	builder.WriteString("   - For each finding, inspect the target `file` at line `line` (and surrounding context).\n")
-	builder.WriteString("   - Apply minimal, robust security fixes matching the ruleId, title, and message while preserving existing business logic.\n\n")
+	builder.WriteString("1. **Targeted Remediation & Taint Data-Flow Analysis (`codeFlow`)**:\n")
+	builder.WriteString("   - For each finding, analyze the provided `ruleId`, `title`, `cwe` classification, and `message` to determine the precise vulnerability category and appropriate security remediation pattern.\n")
+	builder.WriteString("   - Adhere to industry-standard secure coding guidelines for the target language and framework (e.g. parameterized queries/prepared statements for injection flaws, configuration/environment variables for credentials, strict allowlists and sanitization for URLs and file paths, framework security attributes/tokens for CSRF, safe modern API replacements, etc.).\n")
+	builder.WriteString("   - If `codeFlow` is provided, trace the sequential path of data/taint from the source (where untrusted data enters) through intermediary helper classes/methods to the vulnerable sink (where it is evaluated or executed). Apply the fix at the most effective and secure point along the flow (e.g. source input validation, intermediary type constraints, or sink parameterization).\n")
+	builder.WriteString("   - If `codeFlow` is empty, inspect the target `file` at `line` and surrounding context.\n")
+	builder.WriteString("   - Apply minimal, robust security fixes matching the `ruleId`, `title`, and `message` while preserving existing business logic and code style.\n\n")
 	builder.WriteString("2. **Module Build & Compilation Verification**:\n")
 	builder.WriteString("   - Analyze the stack of the target repository and detect the native solution build command (e.g. `dotnet build` for C#/.NET, `npm run build` or `npx tsc` for TS/JS, `go build` for Go, `mvn compile` or `gradle build` for Java).\n")
 	builder.WriteString("   - Execute the build command to ensure your code changes compile cleanly without errors.\n")
