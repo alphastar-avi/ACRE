@@ -1,6 +1,9 @@
 package snyk
 
 import (
+	"encoding/json"
+	"os"
+	"strings"
 	"testing"
 )
 
@@ -250,6 +253,209 @@ func TestNormalizeSarifJSON(t *testing.T) {
 	}
 	if filtered[0].RuleID != "csharp/PT" {
 		t.Errorf("Expected ruleId csharp/PT, got %s", filtered[0].RuleID)
+	}
+}
+
+func TestNormalizeSarifJSON_FindingIDAndCodeFlow(t *testing.T) {
+	sarifWithFlow := `{
+		"version": "2.1.0",
+		"runs": [{
+			"tool": {
+				"driver": {
+					"rules": [{
+						"id": "csharp/Sqli",
+						"shortDescription": { "text": "SQL Injection" },
+						"properties": { "cwe": ["CWE-89"], "precision": "very-high" }
+					}]
+				}
+			},
+			"results": [{
+				"ruleId": "csharp/Sqli",
+				"level": "warning",
+				"message": { "text": "Unsanitized input flows into SQL command." },
+				"locations": [{
+					"physicalLocation": {
+						"artifactLocation": { "uri": "Repositories/OrderRepository.cs" },
+						"region": { "startLine": 402, "endLine": 402 }
+					}
+				}],
+				"fingerprints": {
+					"snyk/asset/finding/v1": "965c5104-8706-4eb6-9d0b-34fc14e604a7",
+					"identity": "965c5104-8706-4eb6-9d0b-34fc14e604a7"
+				},
+				"codeFlows": [{
+					"threadFlows": [{
+						"locations": [
+							{
+								"location": {
+									"physicalLocation": {
+										"artifactLocation": { "uri": "Helpers/SqlHelper.cs" },
+										"region": { "startLine": 105, "endLine": 105 }
+									}
+								}
+							},
+							{
+								"location": {
+									"physicalLocation": {
+										"artifactLocation": { "uri": "Repositories/RepositoryHelper.cs" },
+										"region": { "startLine": 138, "endLine": 138 }
+									}
+								}
+							},
+							{
+								"location": {
+									"physicalLocation": {
+										"artifactLocation": { "uri": "Repositories/OrderRepository.cs" },
+										"region": { "startLine": 316, "endLine": 321 }
+									}
+								}
+							}
+						]
+					}]
+				}]
+			}]
+		}]
+	}`
+
+	findings, err := NormalizeSarifJSON([]byte(sarifWithFlow), "")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	if len(findings) != 1 {
+		t.Fatalf("Expected 1 finding, got %d", len(findings))
+	}
+
+	f := findings[0]
+	if f.FindingID != "965c5104-8706-4eb6-9d0b-34fc14e604a7" {
+		t.Errorf("Expected findingId '965c5104-8706-4eb6-9d0b-34fc14e604a7', got '%s'", f.FindingID)
+	}
+	if f.RuleID != "csharp/Sqli" || f.Title != "SQL Injection" || f.File != "Repositories/OrderRepository.cs" || f.Line != 402 {
+		t.Errorf("Unexpected finding metadata: %+v", f)
+	}
+	if len(f.CodeFlow) != 3 {
+		t.Fatalf("Expected 3 codeFlow locations, got %d", len(f.CodeFlow))
+	}
+
+	if f.CodeFlow[0].File != "Helpers/SqlHelper.cs" || f.CodeFlow[0].StartLine != 105 || f.CodeFlow[0].EndLine != 105 {
+		t.Errorf("Unexpected step 0: %+v", f.CodeFlow[0])
+	}
+	if f.CodeFlow[1].File != "Repositories/RepositoryHelper.cs" || f.CodeFlow[1].StartLine != 138 || f.CodeFlow[1].EndLine != 138 {
+		t.Errorf("Unexpected step 1: %+v", f.CodeFlow[1])
+	}
+	if f.CodeFlow[2].File != "Repositories/OrderRepository.cs" || f.CodeFlow[2].StartLine != 316 || f.CodeFlow[2].EndLine != 321 {
+		t.Errorf("Unexpected step 2: %+v", f.CodeFlow[2])
+	}
+}
+
+func TestNormalizeSarifJSON_EmptyCodeFlowSerializesAsEmptyArray(t *testing.T) {
+	finding := NormalizedFinding{
+		RuleID:    "csharp/AntiforgeryTokenDisabled",
+		Title:     "Anti-forgery token disabled",
+		Level:     "note",
+		Message:   "Action should use anti-forgery token",
+		File:      "Controllers/HomeController.cs",
+		Line:      25,
+		CWE:       []string{"CWE-352"},
+		Precision: "very-high",
+		FindingID: "83b28cff-4963-4018-beb0-0b870fec115f",
+		CodeFlow:  []CodeFlowLocation{},
+	}
+
+	bytes, err := json.Marshal(finding)
+	if err != nil {
+		t.Fatalf("Failed to marshal finding: %v", err)
+	}
+
+	jsonStr := string(bytes)
+	if !strings.Contains(jsonStr, `"codeFlow":[]`) {
+		t.Errorf("Expected JSON to contain '\"codeFlow\":[]', got: %s", jsonStr)
+	}
+	if !strings.Contains(jsonStr, `"findingId":"83b28cff-4963-4018-beb0-0b870fec115f"`) {
+		t.Errorf("Expected JSON to contain findingId, got: %s", jsonStr)
+	}
+}
+
+func TestNormalizeSarifJSON_SampleFileIntegration(t *testing.T) {
+	// Look for sample file in orchestrator directory
+	samplePaths := []string{
+		"../testdata_sample.json",
+		"testdata_sample.json",
+	}
+
+	var data []byte
+	var err error
+	for _, p := range samplePaths {
+		data, err = os.ReadFile(p)
+		if err == nil {
+			break
+		}
+	}
+
+	if err != nil || len(data) == 0 {
+		t.Skip("testdata_sample.json not found on disk, skipping sample file integration test")
+		return
+	}
+
+	findings, err := NormalizeSarifJSON(data, "")
+	if err != nil {
+		t.Fatalf("Failed to normalize real sample SARIF: %v", err)
+	}
+
+	if len(findings) != 16 {
+		t.Fatalf("Expected 16 findings from sample JSON, got %d", len(findings))
+	}
+
+	// Verify Finding 0 (CSRF)
+	f0 := findings[0]
+	if f0.FindingID != "83b28cff-4963-4018-beb0-0b870fec115f" {
+		t.Errorf("Expected finding 0 ID '83b28cff-4963-4018-beb0-0b870fec115f', got '%s'", f0.FindingID)
+	}
+	if f0.RuleID != "csharp/AntiforgeryTokenDisabled" {
+		t.Errorf("Expected rule csharp/AntiforgeryTokenDisabled, got %s", f0.RuleID)
+	}
+	if len(f0.CodeFlow) != 1 {
+		t.Errorf("Expected 1 codeFlow location in finding 0, got %d", len(f0.CodeFlow))
+	}
+
+	// Verify Finding 8 (SQLi)
+	var sqliFinding *NormalizedFinding
+	for idx := range findings {
+		if findings[idx].FindingID == "965c5104-8706-4eb6-9d0b-34fc14e604a7" {
+			sqliFinding = &findings[idx]
+			break
+		}
+	}
+
+	if sqliFinding == nil {
+		t.Fatalf("Finding 965c5104-8706-4eb6-9d0b-34fc14e604a7 not found")
+	}
+
+	if sqliFinding.RuleID != "csharp/Sqli" {
+		t.Errorf("Expected rule csharp/Sqli, got %s", sqliFinding.RuleID)
+	}
+	if sqliFinding.Title != "SQL Injection" {
+		t.Errorf("Expected title 'SQL Injection', got '%s'", sqliFinding.Title)
+	}
+	if sqliFinding.File != "Sbms.Api.Repository.Print/PrintInsertionRepository.cs" {
+		t.Errorf("Expected file 'Sbms.Api.Repository.Print/PrintInsertionRepository.cs', got '%s'", sqliFinding.File)
+	}
+	if sqliFinding.Line != 402 {
+		t.Errorf("Expected line 402, got %d", sqliFinding.Line)
+	}
+	if len(sqliFinding.CodeFlow) != 29 {
+		t.Errorf("Expected 29 code flow locations for SQLi finding, got %d", len(sqliFinding.CodeFlow))
+	}
+
+	// Check first and last codeFlow locations
+	firstLoc := sqliFinding.CodeFlow[0]
+	if firstLoc.File != "Sbms.Api.Repository/SqlHelper.cs" || firstLoc.StartLine != 105 {
+		t.Errorf("Unexpected first codeFlow loc: %+v", firstLoc)
+	}
+
+	lastLoc := sqliFinding.CodeFlow[len(sqliFinding.CodeFlow)-1]
+	if lastLoc.File != "Sbms.Api.Repository/SqlHelper.cs" || lastLoc.StartLine != 88 {
+		t.Errorf("Unexpected last codeFlow loc: %+v", lastLoc)
 	}
 }
 

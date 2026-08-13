@@ -73,8 +73,9 @@ func parseJSONOutput(rawJSON string, report *SnykReport) bool {
 	type JSONResult struct {
 		Runs []struct {
 			Results []struct {
-				RuleID  string `json:"ruleId"`
-				Message struct {
+				RuleID       string            `json:"ruleId"`
+				Fingerprints map[string]string `json:"fingerprints"`
+				Message      struct {
 					Text string `json:"text"`
 				} `json:"message"`
 				Locations []struct {
@@ -123,8 +124,21 @@ func parseJSONOutput(rawJSON string, report *SnykReport) bool {
 					path = r.Locations[0].PhysicalLocation.ArtifactLocation.URI
 					line = r.Locations[0].PhysicalLocation.Region.StartLine
 				}
+				fid := ""
+				if r.Fingerprints != nil {
+					if v, ok := r.Fingerprints["snyk/asset/finding/v1"]; ok && v != "" {
+						fid = v
+					} else if v, ok := r.Fingerprints["identity"]; ok && v != "" {
+						fid = v
+					} else if v, ok := r.Fingerprints["0"]; ok && v != "" {
+						fid = v
+					}
+				}
+				if fid == "" {
+					fid = r.RuleID
+				}
 				report.Issues = append(report.Issues, Issue{
-					FindingID:  r.RuleID,
+					FindingID:  fid,
 					Severity:   sev,
 					Title:      r.RuleID,
 					Path:       cleanPathStr(path, report.ProjectPath),
@@ -135,6 +149,10 @@ func parseJSONOutput(rawJSON string, report *SnykReport) bool {
 		}
 		report.TotalIssues = len(report.Issues)
 		report.OpenIssues = len(report.Issues)
+
+		if norm, normErr := NormalizeSarifJSON([]byte(rawJSON), ""); normErr == nil && len(norm) > 0 {
+			report.Normalized = norm
+		}
 		return true
 	}
 	return false

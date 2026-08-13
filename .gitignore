@@ -28,3 +28,14 @@ CodeBase/
 # Credentials and environment variables
 .env
 *.env
+
+# Snyk outputs and test data
+snykOutput/
+snykOutput.json
+orchestrator/snykOutput/
+orchestrator/snykOutput.json
+orchestrator/testdata_sample.json
+testdata_sample.json
+sample.json
+*.sarif
+*.sarif.json

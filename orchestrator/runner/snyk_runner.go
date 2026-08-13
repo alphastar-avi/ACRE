@@ -99,22 +99,18 @@ func RunSnyk(snykJsonPath, repoPath, reportDir, refPath string) error {
 		remainingFindings, _ = snyk.NormalizeSarifJSON(postScanBytes, "")
 	}
 
-	// Calculate resolved targeted findings by checking ruleId, file, and line
+	// Calculate resolved targeted findings using robust findingId matching and fallback rules
 	resolvedCount := 0
 	var unresolvedFindings []snyk.NormalizedFinding
+	matchedRemaining := make(map[int]bool)
 
 	for _, target := range findings {
-		found := false
-		for _, post := range remainingFindings {
-			if post.RuleID == target.RuleID && post.File == target.File && post.Line == target.Line {
-				found = true
-				break
-			}
-		}
-		if !found {
-			resolvedCount++
-		} else {
+		found, matchIdx := matchTargetFinding(target, remainingFindings, matchedRemaining)
+		if found {
+			matchedRemaining[matchIdx] = true
 			unresolvedFindings = append(unresolvedFindings, target)
+		} else {
+			resolvedCount++
 		}
 	}
 
@@ -142,6 +138,58 @@ func RunSnyk(snykJsonPath, repoPath, reportDir, refPath string) error {
 	return generateSnykReports(reportDir, absRepo, findings, unresolvedFindings, resolvedCount, detailsPtr, snykPrompt, opencodeLogBuffer.String(), logBuffer.String())
 }
 
+// matchTargetFinding matches a target finding against post-scan findings.
+// It prioritizes findingId matching to ensure line shifts caused by code edits are not falsely treated as fixes.
+func matchTargetFinding(target snyk.NormalizedFinding, remaining []snyk.NormalizedFinding, matched map[int]bool) (bool, int) {
+	// 1. Primary match: Match by stable findingId
+	if target.FindingID != "" {
+		for i, post := range remaining {
+			if !matched[i] && post.FindingID != "" && post.FindingID == target.FindingID {
+				return true, i
+			}
+		}
+	}
+
+	targetFile := normalizeFilePath(target.File)
+
+	// 2. Secondary match: Exact RuleID + File + Line
+	for i, post := range remaining {
+		if !matched[i] && post.RuleID == target.RuleID && normalizeFilePath(post.File) == targetFile {
+			if post.Line == target.Line {
+				return true, i
+			}
+		}
+	}
+
+	// 3. Fallback match: Same RuleID + File with line proximity (e.g. line shifted due to code edits)
+	bestIdx := -1
+	minLineDiff := 1000000
+	for i, post := range remaining {
+		if !matched[i] && post.RuleID == target.RuleID && normalizeFilePath(post.File) == targetFile {
+			diff := post.Line - target.Line
+			if diff < 0 {
+				diff = -diff
+			}
+			if diff < minLineDiff {
+				minLineDiff = diff
+				bestIdx = i
+			}
+		}
+	}
+
+	if bestIdx != -1 {
+		return true, bestIdx
+	}
+
+	return false, -1
+}
+
+func normalizeFilePath(p string) string {
+	clean := strings.ReplaceAll(p, "\\", "/")
+	clean = strings.TrimPrefix(clean, "./")
+	return strings.ToLower(strings.TrimSpace(clean))
+}
+
 func generateSnykReports(reportDir string, repoPath string, initialFindings, unresolvedFindings []snyk.NormalizedFinding, resolvedCount int, details *report.RemediationDetails, promptOutput, opencodeOutput, logOutput string) error {
 	if err := os.MkdirAll(reportDir, 0755); err != nil {
 		return fmt.Errorf("failed to create report directory: %w", err)
@@ -155,10 +203,14 @@ func generateSnykReports(reportDir string, repoPath string, initialFindings, unr
 	reportBuilder.WriteString("## Initial Vulnerability Findings Summary\n")
 	reportBuilder.WriteString(fmt.Sprintf("* **Targeted Findings Count:** %d\n\n", len(initialFindings)))
 	if len(initialFindings) > 0 {
-		reportBuilder.WriteString("| Rule ID | Title | File | Line | Level |\n")
-		reportBuilder.WriteString("| ------- | ----- | ---- | ---- | ----- |\n")
+		reportBuilder.WriteString("| Finding ID | Rule ID | Title | File | Line | Level |\n")
+		reportBuilder.WriteString("| ---------- | ------- | ----- | ---- | ---- | ----- |\n")
 		for _, f := range initialFindings {
-			reportBuilder.WriteString(fmt.Sprintf("| `%s` | %s | `%s` | %d | %s |\n", f.RuleID, f.Title, f.File, f.Line, f.Level))
+			fid := f.FindingID
+			if fid == "" {
+				fid = "-"
+			}
+			reportBuilder.WriteString(fmt.Sprintf("| `%s` | `%s` | %s | `%s` | %d | %s |\n", fid, f.RuleID, f.Title, f.File, f.Line, f.Level))
 		}
 		reportBuilder.WriteString("\n")
 	}
@@ -169,10 +221,14 @@ func generateSnykReports(reportDir string, repoPath string, initialFindings, unr
 
 	if len(unresolvedFindings) > 0 {
 		reportBuilder.WriteString("### Remaining Unresolved Findings\n")
-		reportBuilder.WriteString("| Rule ID | Title | File | Line | Level |\n")
-		reportBuilder.WriteString("| ------- | ----- | ---- | ---- | ----- |\n")
+		reportBuilder.WriteString("| Finding ID | Rule ID | Title | File | Line | Level |\n")
+		reportBuilder.WriteString("| ---------- | ------- | ----- | ---- | ---- | ----- |\n")
 		for _, f := range unresolvedFindings {
-			reportBuilder.WriteString(fmt.Sprintf("| `%s` | %s | `%s` | %d | %s |\n", f.RuleID, f.Title, f.File, f.Line, f.Level))
+			fid := f.FindingID
+			if fid == "" {
+				fid = "-"
+			}
+			reportBuilder.WriteString(fmt.Sprintf("| `%s` | `%s` | %s | `%s` | %d | %s |\n", fid, f.RuleID, f.Title, f.File, f.Line, f.Level))
 		}
 		reportBuilder.WriteString("\n")
 	}
