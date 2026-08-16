@@ -26,9 +26,8 @@ func Run(prompt string, repoPath string) (string, error) {
 		args = append(args, "--model", model)
 	}
 
-	args = append(args, prompt)
-
 	// Execute the opencode command non-interactively with auto-approvals.
+	// We pipe the prompt via Stdin to avoid OS command-line length limits (e.g. Windows 8KB/32KB limit).
 	cmd := exec.Command(opencodePath, args...)
 	cmd.Stdin = strings.NewReader(prompt)
 
