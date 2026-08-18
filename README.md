@@ -106,15 +106,23 @@ Ingests the normalized `Output<datetime>.json` file, builds a targeted system pr
 
 #### Command Usage
 ```bash
-./acre --snyk "snykOutput/Output<datetime>.json" --repo "/path/to/repo" --report "/path/to/report/dir" --REF "/path/to/REF/folder"
+./acre --snyk "snykOutput/Output<datetime>.json" --repo "/path/to/repo" --report "/path/to/report/dir" --REF "references"
 ```
 
 #### Key Capabilities:
-* **Reference Guidance (`--REF`)**: Replaces legacy OKF with optional `--REF` path pointing to reference `.md` files or instruction folders.
-* **Targeted Normalized Context**: Passes exact normalized findings (`ruleId`, `title`, `file`, `line`, `message`, `cwe`, `precision`) to OpenCode.
-* **Automated Compilation Checks**: Instructs OpenCode to detect the target repository's native solution build tool (e.g. `dotnet build`, `npm run build`, `go build`, `mvn compile`) and compile the project to verify build success.
-* **Real-time CLI Verification Loop**: OpenCode verifies vulnerability resolution during execution by running `./acre --snykjson --repo . --ruleid <ruleId> --cli` in the terminal until `[]` (0 findings) is returned.
-* **Verification Scan**: Post-remediation verification matches remaining findings by `ruleId`, `file`, and `line`.
+* **Reference Guidance (`--REF`)**: Passes optional reference `.md` files or instruction folders (e.g. `--REF references/csharp_sqli.md` or `--REF references/`). ACRE scans the folder, extracts all `.md` guides, and injects them under `## Reference & Standard Recommended Instructions` in the OpenCode remediation prompt.
+* **Built-in Reference Guides (`references/`)**:
+  * [`references/csharp_sqli.md`](references/csharp_sqli.md): Complete guide for C# SQL Injection (parameterized queries, procedure allowlists, parameterized IN-lists).
+  * [`references/general_remediation.md`](references/general_remediation.md): Universal patterns for Path Traversal, Secrets, CSRF, SSRF, and Command Injection.
+  * [`references/example.md`](references/example.md): Template for creating custom team/project-specific security reference guides.
+* **Targeted Normalized Context**: Passes exact normalized findings (`findingId`, `ruleId`, `title`, `file`, `line`, `message`, `cwe`, `precision`, `codeFlow`) to OpenCode.
+* **Automated Compilation Checks**: Instructs OpenCode to detect the target repository's native solution build tool (e.g. `dotnet build`, `npm run build`, `go build`, `mvn compile`) and compile the project to verify build success with zero compiler errors.
+* **Real-time CLI Verification Loop**: OpenCode verifies vulnerability resolution during execution by executing the resolved ACRE binary:
+  ```powershell
+  & "C:\path\to\acre.exe" --snykjson --repo . --ruleid <ruleId> --cli
+  ```
+  Iterates until `[]` (0 findings) is returned.
+* **Verification Scan**: Post-remediation verification matches remaining findings with line-shift tolerance using stable finding IDs and rule fallbacks.
 * **Output Artifacts**: Saves `report.md`, `prompt.md`, `opencode_output.md`, and `logs.md` in `--report`.
 
 ---
