@@ -188,6 +188,8 @@ func GenerateSnykPrompt(findings []snyk.NormalizedFinding, repoPath string, refP
 		builder.WriteString("\n")
 	}
 
+	acreExe := getAcreExecutablePath()
+
 	builder.WriteString("## Execution, Build & Verification Workflow\n")
 	builder.WriteString("1. **Targeted Remediation & Taint Data-Flow Analysis (`codeFlow`)**:\n")
 	builder.WriteString("   - For each finding, analyze the provided `ruleId`, `title`, `cwe` classification, and `message` to determine the precise vulnerability category and appropriate security remediation pattern.\n")
@@ -200,9 +202,12 @@ func GenerateSnykPrompt(findings []snyk.NormalizedFinding, repoPath string, refP
 	builder.WriteString("   - Execute the build command to ensure your code changes compile cleanly without errors.\n")
 	builder.WriteString("   - If build fails, fix any syntax, type, or compilation errors before proceeding.\n\n")
 	builder.WriteString("3. **Snyk Targeted Verification Scan**:\n")
-	builder.WriteString("   - To verify if the vulnerability for a target `ruleId` has been eliminated, execute `./acre --snykjson --repo . --ruleid <ruleId> --cli` (or run `snyk code test --json`).\n")
-	builder.WriteString("   - The `--cli` flag outputs the current normalized JSON findings for that specific `ruleId` directly to terminal output.\n")
-	builder.WriteString("   - Continue iterating code fixes and build verification until `./acre --snykjson --repo . --ruleid <ruleId> --cli` returns `[]` (0 remaining findings for that `ruleId`).\n\n")
+	builder.WriteString("   - To verify if the vulnerability for a target `ruleId` has been eliminated, execute the ACRE CLI verification command from your shell:\n")
+	builder.WriteString(fmt.Sprintf("     `\"%s\" --snykjson --repo . --ruleid <ruleId> --cli`\n", acreExe))
+	builder.WriteString(fmt.Sprintf("     *(PowerShell note: If invoking a quoted path in PowerShell, prefix with `&`: `& \"%s\" --snykjson --repo . --ruleid <ruleId> --cli`)*\n", acreExe))
+	builder.WriteString("   - The `--cli` flag runs the Snyk scan on the target repository, normalizes the output, and prints the remaining JSON findings directly to terminal output.\n")
+	builder.WriteString(fmt.Sprintf("   - Continue iterating code fixes and build verification until the command returns `[]` (0 remaining findings for that `ruleId`).\n"))
+	builder.WriteString("   - *(Fallback: You can also run `snyk code test --json` directly in the target repository to inspect remaining SARIF findings matching the target `ruleId` or `findingId`).* \n\n")
 	builder.WriteString("4. **Anti-Hallucination Rule**:\n")
 	builder.WriteString("   - If you cannot safely resolve a vulnerability without breaking critical functionality, DO NOT hallucinate fixes or make dummy edits.\n")
 	builder.WriteString("   - Set `\"solved\": false` in `remediation_details.json`, explain the details under `\"recommendations\"`, and exit.\n\n")
@@ -227,5 +232,24 @@ func GenerateSnykPrompt(findings []snyk.NormalizedFinding, repoPath string, refP
 	builder.WriteString("```\n")
 
 	return builder.String()
+}
+
+func getAcreExecutablePath() string {
+	exePath, err := os.Executable()
+	if err == nil && exePath != "" {
+		exePath = filepath.Clean(exePath)
+		if !strings.Contains(exePath, "go-build") && !strings.Contains(exePath, "/tmp/") && !strings.Contains(exePath, "\\Temp\\") {
+			return exePath
+		}
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		for _, name := range []string{"acre.exe", "acre"} {
+			candidate := filepath.Join(cwd, name)
+			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+				return candidate
+			}
+		}
+	}
+	return "acre"
 }
 

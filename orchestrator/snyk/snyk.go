@@ -335,8 +335,9 @@ func GenerateSnykJSON(repoPath string, ruleIdFilter string, printCLI bool) (stri
 	}
 
 	if printCLI {
-		// Output clean normalized JSON array directly to stdout
+		// Output clean normalized JSON array directly to stdout and return cleanly without disk writes
 		fmt.Println(string(normBytes))
+		return "", nil
 	}
 
 	// Create snykOutput folder at root if it doesn't exist
