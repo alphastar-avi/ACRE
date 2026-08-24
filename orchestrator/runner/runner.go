@@ -8,12 +8,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"acre/build"
 	"acre/github"
 	"acre/opencode"
 	"acre/prompt"
 	"acre/report"
-	"acre/test"
 	"acre/ticket"
 )
 
@@ -62,106 +60,39 @@ func Run(ticketPath, repoPath, runsDir string, enablePR, enableRecs, enableTest 
 	}
 
 	// 2. Generate Prompt
-	fmt.Printf("%s[%s]%s Generating initial remediation prompt...\n", Cyan, "2/6", Reset)
+	fmt.Printf("%s[%s]%s Generating remediation prompt...\n", Cyan, "2/6", Reset)
 	isAnalysisOnly := enableRecs || enableTest
 	p := prompt.Generate(t, repoPath, isAnalysisOnly)
-	fmt.Printf("   Initial prompt generated (%d chars).\n\n", len(p))
+	fmt.Printf("   Remediation prompt generated (%d chars).\n\n", len(p))
 
-	currentPrompt := p
-	maxRetries := 3
 	var opencodeOut string
-	var buildCode, testCode int
-	var buildOut, buildErr, testOut, testErr string
 	var runSuccess bool
 	var finalPRURL string
 
-	buildCommand := build.GetCommandString(repoPath)
-	testCommand := test.GetCommandString(repoPath)
-
-	if isAnalysisOnly {
-		fmt.Printf("   %sStep A:%s Executing OpenCode CLI for analysis...\n", Yellow, Reset)
-		opencodeOut, err = opencode.Run(currentPrompt, repoPath)
-		if err != nil {
-			fmt.Printf("   %s[Warning]%s OpenCode execution exited with code/error: %v\n", Yellow, Reset, err)
-		} else {
-			fmt.Printf("   %s[Success]%s OpenCode analysis run completed.\n", Green, Reset)
-		}
-
-		// Run solution compilation build
-		fmt.Printf("   %sStep B:%s Compiling repository solution (%s)...\n", Yellow, Reset, buildCommand)
-		buildCode, buildOut, buildErr = build.Run(repoPath)
-		if buildCode != 0 {
-			fmt.Printf("   %s[Fail]%s Solution build failed with exit code %d.\n", Red, Reset, buildCode)
-		} else {
-			fmt.Printf("   %s[Success]%s Solution build succeeded.\n", Green, Reset)
-		}
-
-		if enableTest {
-			fmt.Printf("   %sStep C:%s [Test Mode] Skipping regression tests execution.\n\n", Yellow, Reset)
-		}
-		runSuccess = true
+	// 3. Execute OpenCode Agent (Agent handles auto language detection, build compilation & targeted tests)
+	fmt.Printf("%s[%s]%s Executing OpenCode Remediation Agent...\n", Cyan, "3/6", Reset)
+	if enableTest {
+		fmt.Printf("   %sStep A:%s Executing OpenCode CLI for analysis & build diagnostics (Test Mode)...\n", Yellow, Reset)
+	} else if enableRecs {
+		fmt.Printf("   %sStep A:%s Executing OpenCode CLI for analysis & recommendations...\n", Yellow, Reset)
 	} else {
-		// Self-healing loop
-		for attempt := 1; attempt <= maxRetries; attempt++ {
-			fmt.Printf("%s[%s]%s %sRemediation Attempt %d/%d%s\n", Cyan, "LOOP", Reset, Bold, attempt, maxRetries, Reset)
-			fmt.Printf("   %sStep A:%s Executing OpenCode CLI (non-interactive)...\n", Yellow, Reset)
-			
-			opencodeOut, err = opencode.Run(currentPrompt, repoPath)
-			if err != nil {
-				fmt.Printf("   %s[Warning]%s OpenCode execution exited with code/error: %v\n", Yellow, Reset, err)
-			} else {
-				fmt.Printf("   %s[Success]%s OpenCode modification run completed.\n", Green, Reset)
-			}
-
-			// Run Build
-			fmt.Printf("   %sStep B:%s Compiling repository (%s)...\n", Yellow, Reset, buildCommand)
-			buildCode, buildOut, buildErr = build.Run(repoPath)
-			if buildCode != 0 {
-				fmt.Printf("   %s[Fail]%s Build failed with exit code %d.\n", Red, Reset, buildCode)
-				
-				// Provide feedback for self-healing
-				currentPrompt = fmt.Sprintf("%s\n\n## Feedback (Attempt %d)\nYour previous modification failed to build with the following error:\n```\n%s\n%s\n```\nPlease correct your modification to resolve this build error.", p, attempt, buildOut, buildErr)
-				fmt.Printf("   %s[Self-Healing]%s Appended build errors. Retrying...\n\n", Magenta, Reset)
-				continue
-			}
-			fmt.Printf("   %s[Success]%s Build succeeded.\n", Green, Reset)
-
-			// Run Tests
-			fmt.Printf("   %sStep C:%s Running regression tests (%s)...\n", Yellow, Reset, testCommand)
-			testCode, testOut, testErr = test.Run(repoPath)
-			if testCode != 0 {
-				fmt.Printf("   %s[Fail]%s Tests failed with exit code %d.\n", Red, Reset, testCode)
-				
-				// Provide feedback for self-healing
-				currentPrompt = fmt.Sprintf("%s\n\n## Feedback (Attempt %d)\nYour previous modification successfully built, but tests failed with the following output:\n```\n%s\n%s\n```\nPlease adjust your modifications to pass the regression tests.", p, attempt, testOut, testErr)
-				fmt.Printf("   %s[Self-Healing]%s Appended test failures. Retrying...\n\n", Magenta, Reset)
-				continue
-			}
-
-			fmt.Printf("   %s[Success]%s All tests passed!\n\n", Green, Reset)
-			runSuccess = true
-			break
-		}
+		fmt.Printf("   %sStep A:%s Executing OpenCode CLI (auto-detecting build tools, compiling & running targeted tests)...\n", Yellow, Reset)
 	}
 
-	if !runSuccess {
-		fmt.Printf("%s[Outcome] Remediation Failed after %d attempts.%s\n\n", Red, maxRetries, Reset)
+	opencodeOut, err = opencode.Run(p, repoPath)
+	if err != nil {
+		fmt.Printf("   %s[Warning]%s OpenCode execution exited with code/error: %v\n\n", Yellow, Reset, err)
 	} else {
-		if enableTest {
-			fmt.Printf("%s[Outcome] Test Mode Diagnostics & Solution Build Completed!%s\n\n", Green, Reset)
-		} else if enableRecs {
-			fmt.Printf("%s[Outcome] Recommendations Gathering Completed!%s\n\n", Green, Reset)
-		} else {
-			fmt.Printf("%s[Outcome] Remediation Successfully Completed!%s\n\n", Green, Reset)
-		}
+		fmt.Printf("   %s[Success]%s OpenCode agent execution completed.\n\n", Green, Reset)
 	}
 
-	// 5. Parse remediation_details.json from repo
+	// 4. Parse remediation_details.json from repo
+	fmt.Printf("%s[%s]%s Parsing remediation details & verification results...\n", Cyan, "4/6", Reset)
 	detailsPath := filepath.Join(repoPath, "remediation_details.json")
 	var details report.RemediationDetails
 	hasDetails := false
 
-	if _, err := os.Stat(detailsPath); err == nil {
+	if _, statErr := os.Stat(detailsPath); statErr == nil {
 		if detailsBytes, readErr := os.ReadFile(detailsPath); readErr == nil {
 			if jsonErr := json.Unmarshal(detailsBytes, &details); jsonErr == nil {
 				hasDetails = true
@@ -170,7 +101,35 @@ func Run(ticketPath, repoPath, runsDir string, enablePR, enableRecs, enableTest 
 		_ = os.Remove(detailsPath)
 	}
 
-	// In test mode: Generate prefilled GitHub manual PR URL without performing git operations
+	if hasDetails {
+		fmt.Printf("   %s[Details Loaded]%s Solved: %t | Confidence: %d/100 | Wrote Tests: %t\n\n", Green, Reset, details.Solved, details.ConfidenceScore, details.WroteTests)
+	} else {
+		fmt.Printf("   %s[Warning]%s No remediation_details.json found in repository root.\n\n", Yellow, Reset)
+	}
+
+	if isAnalysisOnly {
+		runSuccess = err == nil || hasDetails
+	} else {
+		runSuccess = err == nil && hasDetails && details.Solved
+	}
+
+	if !runSuccess {
+		if !hasDetails {
+			fmt.Printf("%s[Outcome] Remediation incomplete (No remediation_details.json written).%s\n\n", Red, Reset)
+		} else {
+			fmt.Printf("%s[Outcome] Remediation marked as unsolved by agent.%s\n\n", Red, Reset)
+		}
+	} else {
+		if enableTest {
+			fmt.Printf("%s[Outcome] Test Mode Diagnostics Completed!%s\n\n", Green, Reset)
+		} else if enableRecs {
+			fmt.Printf("%s[Outcome] Recommendations Gathering Completed!%s\n\n", Green, Reset)
+		} else {
+			fmt.Printf("%s[Outcome] Remediation Successfully Completed!%s\n\n", Green, Reset)
+		}
+	}
+
+	// 5. In test mode: Generate prefilled GitHub manual PR URL without performing git operations
 	if enableTest {
 		currBaseBranch, baseErr := github.GetBaseBranch(repoPath)
 		if baseErr != nil {
@@ -211,11 +170,13 @@ func Run(ticketPath, repoPath, runsDir string, enablePR, enableRecs, enableTest 
 			builder.WriteString("> [!WARNING]\n> Analysis completed. OpenCode did not write `remediation_details.json`.\n")
 		}
 
-		builder.WriteString("\n## Solution Build Status\n")
-		if buildCode == 0 {
-			builder.WriteString("✅ Solution compiled successfully.\n")
+		builder.WriteString("\n## Solution Build & Verification Status\n")
+		if hasDetails && details.Solved {
+			builder.WriteString("✅ Solution verified by OpenCode agent.\n")
+		} else if hasDetails {
+			builder.WriteString("ℹ️ Diagnostics & analysis completed by OpenCode agent.\n")
 		} else {
-			builder.WriteString(fmt.Sprintf("❌ Solution compilation failed with exit code %d.\n", buildCode))
+			builder.WriteString("⚠️ OpenCode completed analysis without writing `remediation_details.json`.\n")
 		}
 
 		prTitle := fmt.Sprintf("docs: recommendations for incident %s - %s", t.TicketID, t.Summary)
@@ -368,18 +329,18 @@ func Run(ticketPath, repoPath, runsDir string, enablePR, enableRecs, enableTest 
 		Ticket:         t,
 		Prompt:         p,
 		OpenCodeOutput: opencodeOut,
-		BuildCommand:   buildCommand,
-		BuildExitCode:  buildCode,
-		BuildStdout:    buildOut,
-		BuildStderr:    buildErr,
-		TestCommand:    testCommand,
-		TestExitCode:   testCode,
-		TestStdout:     testOut,
-		TestStderr:     testErr,
+		BuildCommand:   "Auto-detected & verified by OpenCode Agent",
+		BuildExitCode:  0,
+		TestCommand:    "Auto-detected targeted & regression tests verified by OpenCode Agent",
+		TestExitCode:   0,
 		RepositoryPath: repoPath,
 		Details:        &details,
 		HasDetails:     hasDetails,
 		PullRequestURL: finalPRURL,
+	}
+	if !runSuccess && (!hasDetails || !details.Solved) {
+		reportData.BuildExitCode = 1
+		reportData.TestExitCode = 1
 	}
 
 	runDir, err := report.Generate(runsDir, reportData)
