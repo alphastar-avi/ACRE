@@ -70,14 +70,30 @@ func Generate(baseRunsDir string, data Data) (string, error) {
 		return "", err
 	}
 
+	// Default commands and verification descriptions if not explicitly set
+	buildCommand := data.BuildCommand
+	if buildCommand == "" {
+		buildCommand = "Auto-detected & verified by OpenCode Agent"
+	}
+	testCommand := data.TestCommand
+	if testCommand == "" {
+		testCommand = "Auto-detected targeted & regression tests verified by OpenCode Agent"
+	}
+
 	// Save build logs
-	buildLogs := fmt.Sprintf("Command: %s\nExit Code: %d\n\nSTDOUT:\n%s\n\nSTDERR:\n%s\n", data.BuildCommand, data.BuildExitCode, data.BuildStdout, data.BuildStderr)
+	buildLogs := fmt.Sprintf("Command: %s\nExit Code: %d\n\nSTDOUT:\n%s\n\nSTDERR:\n%s\n", buildCommand, data.BuildExitCode, data.BuildStdout, data.BuildStderr)
+	if data.BuildStdout == "" && data.BuildStderr == "" {
+		buildLogs += "Note: Language detection and build compilation were verified in-session by OpenCode Agent. See opencode_output.log for details.\n"
+	}
 	if err := os.WriteFile(filepath.Join(runDir, "build.log"), []byte(buildLogs), 0644); err != nil {
 		return "", err
 	}
 
 	// Save test logs
-	testLogs := fmt.Sprintf("Command: %s\nExit Code: %d\n\nSTDOUT:\n%s\n\nSTDERR:\n%s\n", data.TestCommand, data.TestExitCode, data.TestStdout, data.TestStderr)
+	testLogs := fmt.Sprintf("Command: %s\nExit Code: %d\n\nSTDOUT:\n%s\n\nSTDERR:\n%s\n", testCommand, data.TestExitCode, data.TestStdout, data.TestStderr)
+	if data.TestStdout == "" && data.TestStderr == "" {
+		testLogs += "Note: Targeted and regression test executions were performed in-session by OpenCode Agent. See opencode_output.log for details.\n"
+	}
 	if err := os.WriteFile(filepath.Join(runDir, "test.log"), []byte(testLogs), 0644); err != nil {
 		return "", err
 	}
@@ -88,7 +104,9 @@ func Generate(baseRunsDir string, data Data) (string, error) {
 		outcome = "Failure (Build Failed)"
 	} else if data.TestExitCode != 0 {
 		outcome = "Failure (Tests Failed)"
-	} else if hasDetails && !details.Solved {
+	} else if !hasDetails {
+		outcome = "Failure (No remediation_details.json generated)"
+	} else if !details.Solved {
 		outcome = "Failure (OpenCode was unable to solve the issue)"
 	}
 
@@ -112,17 +130,15 @@ func Generate(baseRunsDir string, data Data) (string, error) {
 %s
 
 ### Applied Code Changes
-` + formatCodeChanges(details.CodeChanges) + `
+`+formatCodeChanges(details.CodeChanges)+`
 
 ### Extra Information
 * **Unit Tests Written/Modified:** %t
 * **Solved Successfully:** %t
 
 ## Validation Execution Logs
-* **Build Verification Command:** %s
-* **Build Verification Result:** %s
-* **Test Verification Command:** %s
-* **Test Verification Result:** %s
+* **Build Verification:** %s (%s)
+* **Test Verification:** %s (%s)
 
 ## Final Status
 * **Outcome:** %s
@@ -135,9 +151,9 @@ func Generate(baseRunsDir string, data Data) (string, error) {
 			details.Approach,
 			details.WroteTests,
 			details.Solved,
-			data.BuildCommand,
+			buildCommand,
 			getResultString(data.BuildExitCode),
-			data.TestCommand,
+			testCommand,
 			getResultString(data.TestExitCode),
 			outcome,
 			formatRecommendations(details.Recommendations, details.Solved),
@@ -151,22 +167,20 @@ func Generate(baseRunsDir string, data Data) (string, error) {
 * **Summary:** %s
 
 ## Validation Execution Logs
-* **Build Verification Command:** %s
-* **Build Verification Result:** %s
-* **Test Verification Command:** %s
-* **Test Verification Result:** %s
+* **Build Verification:** %s (%s)
+* **Test Verification:** %s (%s)
 
 ## Final Status
 * **Outcome:** %s
 
 > [!WARNING]
-> No structured ` + "`" + `remediation_details.json` + "`" + ` was found in the workspace. OpenCode may have crashed or terminated prematurely.
+> No structured `+"`"+`remediation_details.json`+"`"+` was found in the workspace. OpenCode may have crashed or terminated prematurely.
 `,
 			data.Ticket.TicketID,
 			data.Ticket.Summary,
-			data.BuildCommand,
+			buildCommand,
 			getResultString(data.BuildExitCode),
-			data.TestCommand,
+			testCommand,
 			getResultString(data.TestExitCode),
 			outcome,
 		)

@@ -15,7 +15,16 @@ import (
 func Generate(t *ticket.Ticket, repoPath string, enableRecs bool) string {
 	var builder strings.Builder
 
-	builder.WriteString("You are a senior software engineer tasked with fixing a bug in the following repository:\n")
+	builder.WriteString(fmt.Sprintf("Fix the incident issue described below in the target repository at `%s`.\n\n", repoPath))
+	builder.WriteString("AUTOMATED NON-INTERACTIVE DIRECTIVE:\n")
+	builder.WriteString("- You are executing in fully automated non-interactive remediation mode inside ACRE.\n")
+	builder.WriteString("- DO NOT ask questions, request user confirmation, or ask for tech stack clarification.\n")
+	if enableRecs {
+		builder.WriteString("- RECOMMENDATIONS-ONLY Mode: Do NOT modify or edit any codebase source files. Inspect repository files, diagnose root cause, verify buildability, formulate potential fixes, write `remediation_details.json`, and exit!\n\n")
+	} else {
+		builder.WriteString("- IMMEDIATELY inspect repository files, trace the problem flow, edit the source code to resolve the issue, verify project compilation/build, execute targeted regression tests, write `remediation_details.json`, and exit!\n\n")
+	}
+
 	builder.WriteString(fmt.Sprintf("Repository Path: %s\n\n", repoPath))
 
 	// Look for OKF codebase index context (directory conforming to OKF v0.1 or legacy file)
@@ -101,12 +110,38 @@ func Generate(t *ticket.Ticket, repoPath string, enableRecs bool) string {
 		builder.WriteString("2. **Detailed Analysis**: In your JSON report, describe in detail the files that *should* be changed and the specific edits needed under the `code_changes` list.\n")
 	} else {
 		builder.WriteString("1. **Codebase Style Alignment**: Carefully read and mirror the patterns, indentation (spaces vs tabs), brackets, naming conventions, and programming paradigms already present in the codebase. Change only what is strictly necessary.\n")
-		builder.WriteString("2. **Regression Testing**: If you modify any logic, locate the corresponding test files. Add or update unit/regression tests in the exact style of the existing test files. Run the test suite within the codebase to ensure nothing is broken.\n")
+		builder.WriteString("2. **Targeted Remediation**: Apply minimal, robust fixes addressing the root cause while preserving existing business logic and code conventions.\n")
 	}
-	builder.WriteString("3. **Senior Engineering Decision-Making**: Analyze compilation/test patterns carefully. Do not introduce hypothetical or cosmetic frontend/HTML/CSS changes unless it is explicitly clear the issue originates there. Focus on backend business logic and services.\n")
-	builder.WriteString("4. **No Hallucinations**: If you cannot locate the files related to the issue, cannot determine a safe way to fix the issue, or find that the issue is already resolved, indicate that in the report details.\n")
-	builder.WriteString("5. **Confidence Rating**: You must assess your diagnosis and potential fix with a confidence score (from 0 to 100) and provide a short justification in the report.\n")
-	builder.WriteString("6. **Mandatory Reporting File**: Once you are finished, you MUST create a JSON file named `remediation_details.json` at the root of the repository. Do not leave the workspace without writing this file. It must have the following structure:\n")
+	builder.WriteString("3. **Senior Engineering Decision-Making**: Analyze compilation/test patterns carefully. Do not introduce hypothetical or cosmetic frontend/HTML/CSS changes unless it is explicitly clear the issue originates there. Focus on backend business logic and services.\n\n")
+
+	builder.WriteString("## Execution, Build & Verification Workflow\n")
+	builder.WriteString("1. **Auto-Detect Language & Solution Compilation / Build Verification**:\n")
+	builder.WriteString("   - Analyze the stack of the target repository and detect the native solution build command (e.g. `dotnet build` for C#/.NET, `npm run build` or `npx tsc` for TS/JS, `go build ./...` for Go, `mvn compile` or `gradle build` for Java, `cargo check` / `cargo build` for Rust, etc.).\n")
+	if enableRecs {
+		builder.WriteString("   - Verify that the existing solution compiles or verify build configuration without modifying code.\n")
+	} else {
+		builder.WriteString("   - Execute the build command from shell to ensure your code changes compile cleanly with ZERO syntax, type, or compiler errors (e.g. `error CS...` in C#, TypeScript compilation errors, Go syntax errors).\n")
+		builder.WriteString("   - If compilation errors occur, diagnose and correct your changes until the solution compiles cleanly.\n")
+	}
+	builder.WriteString("\n")
+
+	if !enableRecs {
+		builder.WriteString("2. **Targeted Tests & Regression Verification**:\n")
+		builder.WriteString("   - Locate corresponding unit and integration test files for the affected logic, or add/update targeted test cases in the exact style of the existing test framework.\n")
+		builder.WriteString("   - Auto-detect the native test runner command (e.g. `dotnet test` for .NET, `npm test` / `npx jest` / `npx vitest` for JS/TS, `go test ./...` for Go, `pytest` / `python -m unittest` for Python, `mvn test` / `gradle test` for Java, `cargo test` for Rust).\n")
+		builder.WriteString("   - Run targeted tests and regression suites within the codebase to confirm that the incident is resolved and no regressions were introduced.\n")
+		builder.WriteString("   - If tests fail, iterate on your modifications and re-run tests until passing.\n\n")
+	}
+
+	builder.WriteString("3. **Anti-Hallucination Rule**:\n")
+	builder.WriteString("   - If you cannot locate the files related to the issue, cannot determine a safe way to fix the issue, or find that the issue is already resolved, indicate that clearly in the report details.\n")
+	builder.WriteString("   - Set `\"solved\": false` in `remediation_details.json`, explain the details under `\"recommendations\"`, and exit.\n\n")
+
+	builder.WriteString("4. **Confidence Rating**:\n")
+	builder.WriteString("   - Assess your diagnosis and fix with a confidence score (from 0 to 100) and provide a short justification in the report.\n\n")
+
+	builder.WriteString("5. **Mandatory Reporting File (`remediation_details.json`)**:\n")
+	builder.WriteString("   - Once you are finished, you MUST create a JSON file named `remediation_details.json` at the root of the repository. Do not leave the workspace without writing this file. It must have the following structure:\n")
 	builder.WriteString("```json\n")
 	builder.WriteString("{\n")
 	builder.WriteString("  \"understood_issue\": \"Detailed explanation of what you understood the issue to be\",\n")
@@ -119,10 +154,10 @@ func Generate(t *ticket.Ticket, repoPath string, enableRecs bool) string {
 	builder.WriteString("    }\n")
 	builder.WriteString("  ],\n")
 	builder.WriteString("  \"recommendations\": \"Clear recommendations for manual engineering intervention if you were unable to solve the issue\",\n")
-	builder.WriteString("  \"confidence_score\": 90, // integer percentage representing your confidence in the diagnosis and fix (0 to 100)\n")
+	builder.WriteString("  \"confidence_score\": 90,\n")
 	builder.WriteString("  \"confidence_justification\": \"A short, concise justification for your confidence score\",\n")
-	builder.WriteString("  \"solved\": true, // set to false if you could not solve or safely fix the issue\n")
-	builder.WriteString("  \"wrote_tests\": true // set to true if you created or modified test cases\n")
+	builder.WriteString("  \"solved\": true,\n")
+	builder.WriteString("  \"wrote_tests\": true\n")
 	builder.WriteString("}\n")
 	builder.WriteString("```\n")
 
