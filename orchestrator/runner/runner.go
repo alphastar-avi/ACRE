@@ -30,7 +30,7 @@ const (
 )
 
 // Run executes the full incident remediation pipeline with self-healing retries.
-func Run(ticketPath, repoPath, runsDir string, enablePR, enableRecs, enableTest bool) error {
+func Run(ticketPath, repoPath, runsDir string, enablePR, enableRecs, enableTest bool, skillPath string) error {
 	printHeader()
 
 	// 1. Load Ticket
@@ -62,7 +62,7 @@ func Run(ticketPath, repoPath, runsDir string, enablePR, enableRecs, enableTest 
 	// 2. Generate Prompt
 	fmt.Printf("%s[%s]%s Generating remediation prompt...\n", Cyan, "2/6", Reset)
 	isAnalysisOnly := enableRecs || enableTest
-	p := prompt.Generate(t, repoPath, isAnalysisOnly)
+	p := prompt.Generate(t, repoPath, isAnalysisOnly, skillPath)
 	fmt.Printf("   Remediation prompt generated (%d chars).\n\n", len(p))
 
 	var opencodeOut string

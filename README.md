@@ -7,6 +7,7 @@ An Incident-Driven Automatic Code Remediation Engine.
 ## Features
 
 * **Ticket Ingestion**: Loads and parses structured JSON incident reports.
+* **Domain Skills & Custom Rules (`--skill`)**: Ingests custom `.md` skills or skill directories (e.g. `--skill skills/sample_skill.md` or `--skill skills/`) to enforce team coding rules, architecture standards, and domain invariants without editing Go code.
 * **Open Knowledge Format (OKF) Integration**: Automatically detects and ingests OKF v0.1 specification directories (e.g. `OKF/<repoName>/`) containing structured markdown files and YAML metadata.
 * **Prompt Construction**: Programmatically builds detailed diagnostic prompts for OpenCode with codebase styling, backend focus scopes, and senior engineering guidelines.
 * **OpenCode CLI Integration**: Executes OpenCode non-interactively using the `--dangerously-skip-permissions` sandbox to repair the code.
@@ -48,14 +49,21 @@ An Incident-Driven Automatic Code Remediation Engine.
   ```bash
   ./acre --ticket ../tickets/ENG-0001.json --repo /path/to/target/repo --runs-dir ../runs --pr
   ```
-- **Recommendations Mode (no code changes)**:
+- **Remediation with Custom Domain Skill / Team Rules (`--skill`)**:
+  ```bash
+  ./acre --ticket ../tickets/ENG-0001.json --repo /path/to/target/repo --runs-dir ../runs --skill ../skills/sample_skill.md --pr
+  ```
+- **Recommendations Mode (no code changes, creates `recommendations.md` & opens PR)**:
   ```bash
   ./acre --ticket ../tickets/ENG-0001.json --repo /path/to/target/repo --runs-dir ../runs -r
   ```
-- **Test Mode (`--test`)**:
+- **Test Mode (`--test` dry-run, no git operations)**:
   ```bash
   ./acre --ticket ../tickets/ENG-0001.json --repo /path/to/target/repo --runs-dir ../runs --test
   ```
+
+> [!TIP]
+> **Custom Skills (`--skill <path>`)**: Pass a single `.md` file or an entire directory of `.md` skill files (e.g. [`skills/sample_skill.md`](skills/sample_skill.md)). ACRE injects these guidelines under `## Custom Domain Skills & Engineering Guidelines` in the agent prompt, allowing team and domain rules to be customized dynamically without modifying `prompt.go`.
 
 ---
 
@@ -139,10 +147,38 @@ Supports scanning codebases and generating/updating conformant OKF v0.1 document
 
 ## Jira Extractor
 
-A CLI utility under `JiraExtractor` to download and structure incident tickets from Jira:
+A CLI utility under `JiraExtractor/` to fetch and format Jira tickets into structured JSON for ACRE ingestion.
 
+### 1. Environment Configuration (`.env`)
+Configure credentials in `.env` (at repository root or next to executable):
+```env
+JIRA_PAT=your_jira_personal_access_token
+JIRA_BASE_URL=https://jira.yourcompany.com
+```
+
+### 2. Build & Usage
 ```bash
 cd JiraExtractor
 go build -o jira main.go
 ./jira -ticket <TICKET_ID>
 ```
+*Example*: `./jira -ticket ENG-0001`
+
+### 3. Output Ticket Schema (`<TICKET_ID>.json`)
+Outputs formatted ticket to `<TICKET_ID>.json`:
+```json
+{
+  "ticket_id": "ENG-0001",
+  "summary": "Fix payment gateway timeout error",
+  "description": "Full incident description...",
+  "acceptance_criteria": "Acceptance criteria from customfield_11813",
+  "comments": [
+    {
+      "created": "2026-07-07T22:26:39.000+0000",
+      "author": "Alice Doe",
+      "body": "Initial triage findings..."
+    }
+  ]
+}
+```
+*Note*: Comments are automatically sorted chronologically (`old → new`).

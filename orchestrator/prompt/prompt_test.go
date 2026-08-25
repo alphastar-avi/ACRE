@@ -1,6 +1,8 @@
 package prompt
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -45,7 +47,7 @@ func TestGenerate_IncidentRemediationPrompt(t *testing.T) {
 	}
 
 	// 1. Normal Remediation Mode
-	pNormal := Generate(ticket, "/workspace/service", false)
+	pNormal := Generate(ticket, "/workspace/service", false, "")
 	if !strings.Contains(pNormal, "Auto-Detect Language & Solution Compilation / Build Verification") {
 		t.Errorf("Expected prompt to contain language build detection guidelines")
 	}
@@ -57,11 +59,39 @@ func TestGenerate_IncidentRemediationPrompt(t *testing.T) {
 	}
 
 	// 2. Recommendations / Test Mode
-	pRecs := Generate(ticket, "/workspace/service", true)
+	pRecs := Generate(ticket, "/workspace/service", true, "")
 	if !strings.Contains(pRecs, "RECOMMENDATIONS-ONLY Mode") {
 		t.Errorf("Expected prompt to contain RECOMMENDATIONS-ONLY directive")
 	}
 	if strings.Contains(pRecs, "Targeted Tests & Regression Verification") {
 		t.Errorf("Expected recommendations mode not to include full test execution section")
+	}
+}
+
+func TestGenerate_SkillGuidanceInjection(t *testing.T) {
+	ticket := &ticket.Ticket{
+		TicketID: "ENG-5678",
+		Summary:  "Refactor discount calculation engine",
+		Description: "Apply tiered loyalty discounts according to enterprise billing rules.",
+	}
+
+	// Create a temporary skill markdown file
+	tmpDir := t.TempDir()
+	skillFile := filepath.Join(tmpDir, "custom_billing_skill.md")
+	skillContent := "# Billing Rules\n* Always calculate discounts in Decimal, never Float.\n* Log transaction audit trails."
+	if err := os.WriteFile(skillFile, []byte(skillContent), 0644); err != nil {
+		t.Fatalf("Failed to write temporary skill file: %v", err)
+	}
+
+	p := Generate(ticket, "/workspace/service", false, skillFile)
+
+	if !strings.Contains(p, "## Custom Domain Skills & Engineering Guidelines") {
+		t.Errorf("Expected prompt to contain Custom Domain Skills section")
+	}
+	if !strings.Contains(p, "custom_billing_skill.md") {
+		t.Errorf("Expected prompt to reference custom_billing_skill.md")
+	}
+	if !strings.Contains(p, "Always calculate discounts in Decimal, never Float.") {
+		t.Errorf("Expected prompt to contain custom skill content")
 	}
 }

@@ -12,7 +12,7 @@ import (
 )
 
 // Generate constructs a remediation prompt for OpenCode based on the ticket details.
-func Generate(t *ticket.Ticket, repoPath string, enableRecs bool) string {
+func Generate(t *ticket.Ticket, repoPath string, enableRecs bool, skillPath string) string {
 	var builder strings.Builder
 
 	builder.WriteString(fmt.Sprintf("Fix the incident issue described below in the target repository at `%s`.\n\n", repoPath))
@@ -80,6 +80,37 @@ func Generate(t *ticket.Ticket, repoPath string, enableRecs bool) string {
 				builder.WriteString(string(data))
 				builder.WriteString("\n")
 				break
+			}
+		}
+	}
+
+	// Include custom domain skills & engineering guidelines if provided via --skill
+	if skillPath != "" {
+		info, err := os.Stat(skillPath)
+		if err == nil {
+			builder.WriteString("## Custom Domain Skills & Engineering Guidelines\n")
+			builder.WriteString(fmt.Sprintf("Skill Reference Location: %s\n\n", skillPath))
+			if !info.IsDir() {
+				if content, rErr := os.ReadFile(skillPath); rErr == nil {
+					builder.WriteString(fmt.Sprintf("### Skill Guide: %s\n", filepath.Base(skillPath)))
+					builder.WriteString("```markdown\n")
+					builder.WriteString(string(content))
+					builder.WriteString("\n```\n\n")
+				}
+			} else {
+				// Search for .md files in the skills directory
+				entries, _ := os.ReadDir(skillPath)
+				for _, entry := range entries {
+					if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".md") {
+						p := filepath.Join(skillPath, entry.Name())
+						if content, rErr := os.ReadFile(p); rErr == nil {
+							builder.WriteString(fmt.Sprintf("### Skill Guide: %s\n", entry.Name()))
+							builder.WriteString("```markdown\n")
+							builder.WriteString(string(content))
+							builder.WriteString("\n```\n\n")
+						}
+					}
+				}
 			}
 		}
 	}

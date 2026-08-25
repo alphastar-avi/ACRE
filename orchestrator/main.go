@@ -62,6 +62,9 @@ func main() {
 	enableRecs := flag.Bool("r", false, "Analyze codebase, identify root cause, write structured recommendations report, and open a PR without changing codebase files")
 	enableTest := flag.Bool("test", false, "Test mode: analyze codebase, compile solution, generate report & manual PR URL without git operations or running regression tests")
 
+	skillPathLower := flag.String("skill", "", "Optional path to custom skill markdown file (.md) or skills directory to inject domain rules and business logic")
+	skillPathUpper := flag.String("SKILL", "", "Optional path to custom skill markdown file (.md) or skills directory to inject domain rules and business logic")
+
 	// Snyk workflow flags
 	enableSnykJson := flag.Bool("snykjson", false, "Run 'snyk code test --json', normalize findings SARIF, and output to snykOutput/Output<datetime>.json")
 	ruleIdFlag := flag.String("ruleid", "", "Optional rule ID filter for --snykjson (e.g. csharp/PT)")
@@ -127,7 +130,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	err := runner.Run(*ticketPath, *repoPath, *runsDir, *enablePR, *enableRecs, *enableTest)
+	skill := *skillPathLower
+	if skill == "" {
+		skill = *skillPathUpper
+	}
+
+	err := runner.Run(*ticketPath, *repoPath, *runsDir, *enablePR, *enableRecs, *enableTest, skill)
 	if err != nil {
 		log.Fatalf("ACRE execution failed: %v", err)
 	}
