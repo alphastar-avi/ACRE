@@ -362,7 +362,7 @@ func printHeader() {
   / _ | / __// _ \/ _ \
  / __ |/ /__/ , _/ ___/
 /_/ |_|\___//_/|_/_/    
-Automatic Code Remediation Engine v1.0
+Automatic Code Remediation Engine v2.0.0
 `
 	fmt.Printf("%s%s%s\n", Bold, Green, header)
 }
