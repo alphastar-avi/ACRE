@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"acre/ticket"
@@ -45,6 +46,11 @@ type Data struct {
 	Details        *RemediationDetails
 	HasDetails     bool
 	PullRequestURL string
+	StartTime      time.Time
+	EndTime        time.Time
+	Duration       time.Duration
+	ModelUsed      string
+	TokenUsage     string
 }
 
 // Generate creates a timestamped run directory and saves all artifacts and the final report.
@@ -110,6 +116,8 @@ func Generate(baseRunsDir string, data Data) (string, error) {
 		outcome = "Failure (OpenCode was unable to solve the issue)"
 	}
 
+	finalStatusSection := formatFinalStatus(data, outcome)
+
 	// Generate Detailed Remediation Report Content
 	reportContent := ""
 	if hasDetails {
@@ -140,9 +148,7 @@ func Generate(baseRunsDir string, data Data) (string, error) {
 * **Build Verification:** %s (%s)
 * **Test Verification:** %s (%s)
 
-## Final Status
-* **Outcome:** %s
-
+%s
 %s`,
 			data.Ticket.TicketID,
 			data.Ticket.Summary,
@@ -155,7 +161,7 @@ func Generate(baseRunsDir string, data Data) (string, error) {
 			getResultString(data.BuildExitCode),
 			testCommand,
 			getResultString(data.TestExitCode),
-			outcome,
+			finalStatusSection,
 			formatRecommendations(details.Recommendations, details.Solved),
 		)
 	} else {
@@ -170,9 +176,7 @@ func Generate(baseRunsDir string, data Data) (string, error) {
 * **Build Verification:** %s (%s)
 * **Test Verification:** %s (%s)
 
-## Final Status
-* **Outcome:** %s
-
+%s
 > [!WARNING]
 > No structured `+"`"+`remediation_details.json`+"`"+` was found in the workspace. OpenCode may have crashed or terminated prematurely.
 `,
@@ -182,7 +186,7 @@ func Generate(baseRunsDir string, data Data) (string, error) {
 			getResultString(data.BuildExitCode),
 			testCommand,
 			getResultString(data.TestExitCode),
-			outcome,
+			finalStatusSection,
 		)
 	}
 
@@ -196,6 +200,71 @@ func Generate(baseRunsDir string, data Data) (string, error) {
 	}
 
 	return runDir, nil
+}
+
+func formatFinalStatus(data Data, outcome string) string {
+	var b strings.Builder
+	b.WriteString("## Final Status\n")
+	b.WriteString(fmt.Sprintf("* **Outcome:** %s\n", outcome))
+
+	model := data.ModelUsed
+	if model == "" {
+		model = os.Getenv("OPENCODE_MODEL")
+		if model == "" {
+			model = "opencode/big-pickle"
+		}
+	}
+	b.WriteString(fmt.Sprintf("* **Model Used:** `%s`\n", model))
+
+	if !data.StartTime.IsZero() {
+		b.WriteString(fmt.Sprintf("* **Start Time:** %s\n", data.StartTime.Format("2006-01-02 15:04:05 MST")))
+	}
+	if !data.EndTime.IsZero() {
+		b.WriteString(fmt.Sprintf("* **End Time:** %s\n", data.EndTime.Format("2006-01-02 15:04:05 MST")))
+	}
+
+	duration := data.Duration
+	if duration == 0 && !data.StartTime.IsZero() && !data.EndTime.IsZero() {
+		duration = data.EndTime.Sub(data.StartTime)
+	}
+	if duration > 0 {
+		b.WriteString(fmt.Sprintf("* **Total Duration:** %s\n", formatDuration(duration)))
+	}
+
+	// Token usage
+	tokenUsage := data.TokenUsage
+	if tokenUsage == "" {
+		tokenUsage = extractTokenUsage(data.OpenCodeOutput)
+	}
+	if tokenUsage != "" {
+		b.WriteString(fmt.Sprintf("* **Token Usage:** %s\n", tokenUsage))
+	} else if len(data.Prompt) > 0 || len(data.OpenCodeOutput) > 0 {
+		b.WriteString(fmt.Sprintf("* **Context Size:** ~%d chars prompt / ~%d chars agent output\n", len(data.Prompt), len(data.OpenCodeOutput)))
+	}
+
+	return b.String()
+}
+
+func formatDuration(d time.Duration) string {
+	d = d.Round(time.Second)
+	m := d / time.Minute
+	s := (d % time.Minute) / time.Second
+	if m > 0 {
+		return fmt.Sprintf("%dm %ds", m, s)
+	}
+	return fmt.Sprintf("%ds", s)
+}
+
+func extractTokenUsage(output string) string {
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		lineTrim := strings.TrimSpace(line)
+		lower := strings.ToLower(lineTrim)
+		if strings.Contains(lower, "tokens:") || strings.Contains(lower, "token usage:") || strings.Contains(lower, "total tokens:") {
+			return lineTrim
+		}
+	}
+	return ""
 }
 
 func getResultString(exitCode int) string {

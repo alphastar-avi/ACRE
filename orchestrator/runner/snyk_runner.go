@@ -79,7 +79,9 @@ func RunSnyk(snykJsonPath, repoPath, reportDir, refPath string) error {
 	snykPrompt := prompt.GenerateSnykPrompt(findings, absRepo, refPath)
 
 	logPrintln("   Invoking OpenCode agent...")
+	startTime := time.Now()
 	opencodeOut, err := opencode.Run(snykPrompt, absRepo)
+	endTime := time.Now()
 	opencodeLogBuffer.WriteString(opencodeOut + "\n")
 
 	if err != nil {
@@ -135,7 +137,7 @@ func RunSnyk(snykJsonPath, repoPath, reportDir, refPath string) error {
 		detailsPtr = &details
 	}
 
-	return generateSnykReports(reportDir, absRepo, findings, unresolvedFindings, resolvedCount, detailsPtr, snykPrompt, opencodeLogBuffer.String(), logBuffer.String())
+	return generateSnykReports(reportDir, absRepo, findings, unresolvedFindings, resolvedCount, detailsPtr, snykPrompt, opencodeLogBuffer.String(), logBuffer.String(), startTime, endTime)
 }
 
 // matchTargetFinding matches a target finding against post-scan findings.
@@ -190,15 +192,37 @@ func normalizeFilePath(p string) string {
 	return strings.ToLower(strings.TrimSpace(clean))
 }
 
-func generateSnykReports(reportDir string, repoPath string, initialFindings, unresolvedFindings []snyk.NormalizedFinding, resolvedCount int, details *report.RemediationDetails, promptOutput, opencodeOutput, logOutput string) error {
+func generateSnykReports(reportDir string, repoPath string, initialFindings, unresolvedFindings []snyk.NormalizedFinding, resolvedCount int, details *report.RemediationDetails, promptOutput, opencodeOutput, logOutput string, startTime, endTime time.Time) error {
 	if err := os.MkdirAll(reportDir, 0755); err != nil {
 		return fmt.Errorf("failed to create report directory: %w", err)
 	}
 
+	modelUsed := os.Getenv("OPENCODE_MODEL")
+	if modelUsed == "" {
+		modelUsed = "opencode/big-pickle"
+	}
+
+	duration := endTime.Sub(startTime)
+	durationStr := fmt.Sprintf("%ds", int(duration.Seconds()))
+	if duration >= time.Minute {
+		durationStr = fmt.Sprintf("%dm %ds", int(duration.Minutes()), int(duration.Seconds())%60)
+	}
+
 	var reportBuilder strings.Builder
 	reportBuilder.WriteString("# ACRE Snyk Code Test Remediation Report\n\n")
-	reportBuilder.WriteString(fmt.Sprintf("* **Date:** %s\n", time.Now().Format("2006-01-02 15:04:05")))
-	reportBuilder.WriteString(fmt.Sprintf("* **Target Repository:** `%s`\n\n", repoPath))
+	reportBuilder.WriteString("## Execution Information\n")
+	reportBuilder.WriteString(fmt.Sprintf("* **Target Repository:** `%s`\n", repoPath))
+	reportBuilder.WriteString(fmt.Sprintf("* **Model Used:** `%s`\n", modelUsed))
+	if !startTime.IsZero() {
+		reportBuilder.WriteString(fmt.Sprintf("* **Start Time:** %s\n", startTime.Format("2006-01-02 15:04:05 MST")))
+	}
+	if !endTime.IsZero() {
+		reportBuilder.WriteString(fmt.Sprintf("* **End Time:** %s\n", endTime.Format("2006-01-02 15:04:05 MST")))
+	}
+	if duration > 0 {
+		reportBuilder.WriteString(fmt.Sprintf("* **Total Duration:** %s\n", durationStr))
+	}
+	reportBuilder.WriteString(fmt.Sprintf("* **Context Size:** ~%d chars prompt / ~%d chars agent output\n\n", len(promptOutput), len(opencodeOutput)))
 
 	reportBuilder.WriteString("## Initial Vulnerability Findings Summary\n")
 	reportBuilder.WriteString(fmt.Sprintf("* **Targeted Findings Count:** %d\n\n", len(initialFindings)))

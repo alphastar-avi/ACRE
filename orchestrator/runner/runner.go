@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"acre/github"
 	"acre/opencode"
@@ -79,7 +80,9 @@ func Run(ticketPath, repoPath, runsDir string, enablePR, enableRecs, enableTest 
 		fmt.Printf("   %sStep A:%s Executing OpenCode CLI (auto-detecting build tools, compiling & running targeted tests)...\n", Yellow, Reset)
 	}
 
+	startTime := time.Now()
 	opencodeOut, err = opencode.Run(p, repoPath)
+	endTime := time.Now()
 	if err != nil {
 		fmt.Printf("   %s[Warning]%s OpenCode execution exited with code/error: %v\n\n", Yellow, Reset, err)
 	} else {
@@ -325,6 +328,11 @@ func Run(ticketPath, repoPath, runsDir string, enablePR, enableRecs, enableTest 
 
 	// 6. Report
 	fmt.Printf("%s[%s]%s Packaging final run report...\n", Cyan, "6/6", Reset)
+	modelUsed := os.Getenv("OPENCODE_MODEL")
+	if modelUsed == "" {
+		modelUsed = "opencode/big-pickle"
+	}
+
 	reportData := report.Data{
 		Ticket:         t,
 		Prompt:         p,
@@ -337,6 +345,10 @@ func Run(ticketPath, repoPath, runsDir string, enablePR, enableRecs, enableTest 
 		Details:        &details,
 		HasDetails:     hasDetails,
 		PullRequestURL: finalPRURL,
+		StartTime:      startTime,
+		EndTime:        endTime,
+		Duration:       endTime.Sub(startTime),
+		ModelUsed:      modelUsed,
 	}
 	if !runSuccess && (!hasDetails || !details.Solved) {
 		reportData.BuildExitCode = 1
