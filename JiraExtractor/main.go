@@ -13,7 +13,10 @@ import (
 	"time"
 )
 
-// Structs matching the Jira API response
+// ---------------------------------------------------------------------------
+// Jira Cloud (v3 REST API) with Basic Auth & Atlassian Document Format (ADF)
+// ---------------------------------------------------------------------------
+
 type JiraAuthor struct {
 	DisplayName string `json:"displayName"`
 	Name        string `json:"name"`
@@ -21,10 +24,10 @@ type JiraAuthor struct {
 }
 
 type JiraComment struct {
-	ID      string     `json:"id"`
-	Author  JiraAuthor `json:"author"`
-	Body    string     `json:"body"`
-	Created string     `json:"created"`
+	ID      string          `json:"id"`
+	Author  JiraAuthor      `json:"author"`
+	Body    json.RawMessage `json:"body"`
+	Created string          `json:"created"`
 }
 
 type JiraCommentList struct {
@@ -33,8 +36,8 @@ type JiraCommentList struct {
 
 type JiraFields struct {
 	Summary            string          `json:"summary"`
-	Description        string          `json:"description"`
-	AcceptanceCriteria string          `json:"customfield_11813"`
+	Description        json.RawMessage `json:"description"`
+	AcceptanceCriteria json.RawMessage `json:"customfield_11813"`
 	Comment            JiraCommentList `json:"comment"`
 }
 
@@ -44,7 +47,6 @@ type JiraIssueResponse struct {
 	Fields JiraFields `json:"fields"`
 }
 
-// Struct for the output JSON file
 type OutputTicket struct {
 	TicketID           string          `json:"ticket_id"`
 	Summary            string          `json:"summary"`
@@ -59,20 +61,69 @@ type OutputComment struct {
 	Body    string `json:"body"`
 }
 
-// findAndLoadEnv walks up the directory tree to find and parse the first .env file it encounters.
+// ---------------------------------------------------------------------------
+// ADF -> plain text
+// ---------------------------------------------------------------------------
+
+type adfNode struct {
+	Type    string    `json:"type"`
+	Text    string    `json:"text"`
+	Content []adfNode `json:"content"`
+}
+
+func adfToPlainText(raw json.RawMessage) string {
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" || trimmed == "null" {
+		return ""
+	}
+	if trimmed[0] == '"' {
+		var s string
+		if err := json.Unmarshal(raw, &s); err == nil {
+			return s
+		}
+	}
+	var node adfNode
+	if err := json.Unmarshal(raw, &node); err != nil {
+		return trimmed
+	}
+	var sb strings.Builder
+	walkADF(&node, &sb)
+	return strings.TrimSpace(sb.String())
+}
+
+func walkADF(n *adfNode, sb *strings.Builder) {
+	if n == nil {
+		return
+	}
+	if n.Type == "listItem" {
+		sb.WriteString("- ")
+	}
+	if n.Text != "" {
+		sb.WriteString(n.Text)
+	}
+	for i := range n.Content {
+		walkADF(&n.Content[i], sb)
+	}
+	switch n.Type {
+	case "paragraph", "heading", "listItem", "blockquote", "codeBlock", "hardBreak":
+		sb.WriteString("\n")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// .env loading
+// ---------------------------------------------------------------------------
+
 func findAndLoadEnv() string {
-	// 1. Try starting from the current working directory
 	dir, err := os.Getwd()
 	if err == nil {
 		for {
-			// Check direct .env
 			envPath := filepath.Join(dir, ".env")
 			if _, err := os.Stat(envPath); err == nil {
 				if err := parseEnvFile(envPath); err == nil {
 					return envPath
 				}
 			}
-			// Check orchestrator/.env
 			orchEnvPath := filepath.Join(dir, "orchestrator", ".env")
 			if _, err := os.Stat(orchEnvPath); err == nil {
 				if err := parseEnvFile(orchEnvPath); err == nil {
@@ -87,7 +138,6 @@ func findAndLoadEnv() string {
 		}
 	}
 
-	// 2. Try adjacent to the running executable
 	if exePath, err := os.Executable(); err == nil {
 		exeDir := filepath.Dir(exePath)
 		envPath := filepath.Join(exeDir, ".env")
@@ -96,7 +146,6 @@ func findAndLoadEnv() string {
 				return envPath
 			}
 		}
-		// Check orchestrator/.env adjacent to exe dir
 		orchEnvPath := filepath.Join(exeDir, "orchestrator", ".env")
 		if _, err := os.Stat(orchEnvPath); err == nil {
 			if err := parseEnvFile(orchEnvPath); err == nil {
@@ -104,7 +153,6 @@ func findAndLoadEnv() string {
 			}
 		}
 	}
-
 	return ""
 }
 
@@ -133,8 +181,21 @@ func parseEnvFile(path string) error {
 	return nil
 }
 
+func getenvFirst(keys ...string) string {
+	for _, k := range keys {
+		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// ---------------------------------------------------------------------------
+// main
+// ---------------------------------------------------------------------------
+
 func main() {
-	ticketFlag := flag.String("ticket", "", "Jira ticket ID (e.g. FWS-66214)")
+	ticketFlag := flag.String("ticket", "", "Jira ticket ID (e.g. FWS-67484)")
 	flag.Parse()
 
 	if *ticketFlag == "" {
@@ -145,7 +206,6 @@ func main() {
 
 	ticketID := strings.TrimSpace(*ticketFlag)
 
-	// Load env
 	envPath := findAndLoadEnv()
 	if envPath == "" {
 		fmt.Fprintln(os.Stderr, "Warning: No .env file loaded. Using existing environment variables.")
@@ -153,36 +213,39 @@ func main() {
 		fmt.Printf("Loaded environment from: %s\n", envPath)
 	}
 
-	// Get Token
-	token := os.Getenv("JIRA_PAT")
+	token := getenvFirst("JIRA_API_TOKEN", "JIRA_PAT")
 	if token == "" {
-		fmt.Fprintln(os.Stderr, "Error: JIRA_PAT not found in environment variables.")
+		fmt.Fprintln(os.Stderr, "Error: JIRA_API_TOKEN (or legacy JIRA_PAT) not found in environment variables.")
 		os.Exit(1)
 	}
 
-	// Get Base URL
-	baseUrl := strings.TrimRight(os.Getenv("JIRA_BASE_URL"), "/")
+	baseUrl := strings.TrimRight(getenvFirst("JIRA_BASE_URL"), "/")
 	if baseUrl == "" {
 		fmt.Fprintln(os.Stderr, "Error: JIRA_BASE_URL not found in environment variables.")
 		os.Exit(1)
 	}
 
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
+	email := getenvFirst("JIRA_EMAIL")
+
+	client := &http.Client{Timeout: 30 * time.Second}
 	outputFileName := fmt.Sprintf("%s.json", ticketID)
 
-	err := extractTicket(client, baseUrl, ticketID, token, outputFileName)
-	if err != nil {
+	if err := extractTicket(client, baseUrl, email, ticketID, token, outputFileName); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-// extractTicket performs the API call, processes fields, sorts comments, prints to stdout, and writes to outputFileName.
-func extractTicket(client *http.Client, baseUrl string, ticketID string, token string, outputFileName string) error {
-	// Build Jira API URL exactly as specified to avoid parsing issues
-	issuePath := fmt.Sprintf("%s/rest/api/2/issue/%s", baseUrl, ticketID)
+func extractTicket(
+	client *http.Client,
+	baseUrl string,
+	email string,
+	ticketID string,
+	token string,
+	outputFileName string,
+) error {
+
+	issuePath := fmt.Sprintf("%s/rest/api/3/issue/%s", baseUrl, ticketID)
 	query := "?fields=summary,description,comment,customfield_11813"
 	uri := issuePath + query
 
@@ -193,8 +256,12 @@ func extractTicket(client *http.Client, baseUrl string, ticketID string, token s
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
-	req.Header.Set("Content-Type", "application/json")
+	if email != "" {
+		req.SetBasicAuth(email, token)
+	} else {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+	}
+	req.Header.Set("Accept", "application/json")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -208,6 +275,9 @@ func extractTicket(client *http.Client, baseUrl string, ticketID string, token s
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		if v := resp.Header.Get("X-Seraph-Loginreason"); v != "" {
+			fmt.Fprintf(os.Stderr, "X-Seraph-Loginreason: %s (check base URL / token)\n", v)
+		}
 		return fmt.Errorf("Jira API returned status code %d: %s", resp.StatusCode, string(respBody))
 	}
 
@@ -216,7 +286,6 @@ func extractTicket(client *http.Client, baseUrl string, ticketID string, token s
 		return fmt.Errorf("failed to parse Jira response: %w", err)
 	}
 
-	// Sort comments by created date (old -> new)
 	comments := jiraIssue.Fields.Comment.Comments
 	sort.Slice(comments, func(i, j int) bool {
 		t1, err1 := time.Parse("2006-01-02T15:04:05.000-0700", comments[i].Created)
@@ -224,39 +293,41 @@ func extractTicket(client *http.Client, baseUrl string, ticketID string, token s
 		if err1 == nil && err2 == nil {
 			return t1.Before(t2)
 		}
-		// Fallback to lexicographical comparison
 		return comments[i].Created < comments[j].Created
 	})
 
-	// Construct structured output for stdout
 	var commentOutputs []OutputComment
 	var formattedComments strings.Builder
+
 	for _, c := range comments {
 		authorName := c.Author.DisplayName
 		if authorName == "" {
 			authorName = c.Author.Name
 		}
+		bodyText := adfToPlainText(c.Body)
+
 		commentOutputs = append(commentOutputs, OutputComment{
 			Created: c.Created,
 			Author:  authorName,
-			Body:    c.Body,
+			Body:    bodyText,
 		})
 
-		formattedComments.WriteString(fmt.Sprintf("%s - %s:\n%s\n", c.Created, authorName, c.Body))
+		formattedComments.WriteString(fmt.Sprintf("%s - %s:\n%s\n", c.Created, authorName, bodyText))
 	}
 
-	// Print structured ticket in requested format
-	fmt.Printf("=== SUMMARY ===\n%s\n\n", jiraIssue.Fields.Summary)
-	fmt.Printf("=== DESCRIPTION ===\n%s\n\n", jiraIssue.Fields.Description)
-	fmt.Printf("=== ACCEPTANCE CRITERIA ===\n%s\n\n", jiraIssue.Fields.AcceptanceCriteria)
-	fmt.Printf("=== COMMENTS (old → new) ===\n%s", formattedComments.String())
+	descriptionText := adfToPlainText(jiraIssue.Fields.Description)
+	acceptanceText := adfToPlainText(jiraIssue.Fields.AcceptanceCriteria)
 
-	// Build and write OutputTicket JSON file
+	fmt.Printf("=== SUMMARY ===\n%s\n\n", jiraIssue.Fields.Summary)
+	fmt.Printf("=== DESCRIPTION ===\n%s\n\n", descriptionText)
+	fmt.Printf("=== ACCEPTANCE CRITERIA ===\n%s\n\n", acceptanceText)
+	fmt.Printf("=== COMMENTS (old -> new) ===\n%s", formattedComments.String())
+
 	outputObj := OutputTicket{
 		TicketID:           jiraIssue.Key,
 		Summary:            jiraIssue.Fields.Summary,
-		Description:        jiraIssue.Fields.Description,
-		AcceptanceCriteria: jiraIssue.Fields.AcceptanceCriteria,
+		Description:        descriptionText,
+		AcceptanceCriteria: acceptanceText,
 		Comments:           commentOutputs,
 	}
 
@@ -265,8 +336,7 @@ func extractTicket(client *http.Client, baseUrl string, ticketID string, token s
 		return fmt.Errorf("failed to marshal output JSON: %w", err)
 	}
 
-	err = os.WriteFile(outputFileName, jsonBytes, 0644)
-	if err != nil {
+	if err := os.WriteFile(outputFileName, jsonBytes, 0644); err != nil {
 		return fmt.Errorf("failed to write JSON file %s: %w", outputFileName, err)
 	}
 
