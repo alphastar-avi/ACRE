@@ -47,7 +47,7 @@ func TestGenerate_IncidentRemediationPrompt(t *testing.T) {
 	}
 
 	// 1. Normal Remediation Mode
-	pNormal := Generate(ticket, "/workspace/service", false, "")
+	pNormal := Generate(ticket, "/workspace/service", false, "", "")
 	if !strings.Contains(pNormal, "Auto-Detect Language & Solution Compilation / Build Verification") {
 		t.Errorf("Expected prompt to contain language build detection guidelines")
 	}
@@ -59,7 +59,7 @@ func TestGenerate_IncidentRemediationPrompt(t *testing.T) {
 	}
 
 	// 2. Recommendations / Test Mode
-	pRecs := Generate(ticket, "/workspace/service", true, "")
+	pRecs := Generate(ticket, "/workspace/service", true, "", "")
 	if !strings.Contains(pRecs, "RECOMMENDATIONS-ONLY Mode") {
 		t.Errorf("Expected prompt to contain RECOMMENDATIONS-ONLY directive")
 	}
@@ -83,7 +83,7 @@ func TestGenerate_SkillGuidanceInjection(t *testing.T) {
 		t.Fatalf("Failed to write temporary skill file: %v", err)
 	}
 
-	p := Generate(ticket, "/workspace/service", false, skillFile)
+	p := Generate(ticket, "/workspace/service", false, skillFile, "")
 
 	if !strings.Contains(p, "## Custom Domain Skills & Engineering Guidelines") {
 		t.Errorf("Expected prompt to contain Custom Domain Skills section")
@@ -93,5 +93,36 @@ func TestGenerate_SkillGuidanceInjection(t *testing.T) {
 	}
 	if !strings.Contains(p, "Always calculate discounts in Decimal, never Float.") {
 		t.Errorf("Expected prompt to contain custom skill content")
+	}
+}
+
+func TestGenerate_OKFGuidanceInjection(t *testing.T) {
+	ticket := &ticket.Ticket{
+		TicketID: "ENG-9999",
+		Summary:  "Fix checkout shipping calculation",
+		Description: "Shipping provider throws NullReferenceException.",
+	}
+
+	tmpDir := t.TempDir()
+	okfDir := filepath.Join(tmpDir, "OKF", "Smartstore")
+	if err := os.MkdirAll(okfDir, 0755); err != nil {
+		t.Fatalf("Failed to create okf dir: %v", err)
+	}
+	indexPath := filepath.Join(okfDir, "index.md")
+	indexContent := "# Smartstore Architecture Index\nNavigation graph and entry points."
+	if err := os.WriteFile(indexPath, []byte(indexContent), 0644); err != nil {
+		t.Fatalf("Failed to write index.md: %v", err)
+	}
+
+	p := Generate(ticket, "/workspace/Smartstore", false, "", okfDir)
+
+	if !strings.Contains(p, "## Codebase Context & Index (Open Knowledge Format)") {
+		t.Errorf("Expected prompt to contain OKF section")
+	}
+	if !strings.Contains(p, indexContent) {
+		t.Errorf("Expected prompt to contain index.md content")
+	}
+	if !strings.Contains(p, "OKF Progressive Disclosure Guidelines") {
+		t.Errorf("Expected prompt to contain progressive disclosure guidelines")
 	}
 }

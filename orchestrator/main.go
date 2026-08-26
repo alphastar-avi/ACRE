@@ -64,6 +64,11 @@ func main() {
 
 	skillPathLower := flag.String("skill", "", "Optional path to custom skill markdown file (.md) or skills directory to inject domain rules and business logic")
 	skillPathUpper := flag.String("SKILL", "", "Optional path to custom skill markdown file (.md) or skills directory to inject domain rules and business logic")
+	okfPathLower := flag.String("okf-path", "", "Optional path to explicit OKF documentation folder or file for incident remediation")
+	okfPathUpper := flag.String("OKF-PATH", "", "Optional path to explicit OKF documentation folder or file for incident remediation")
+	okfPathShort := flag.String("OKF", "", "Optional path to explicit OKF documentation folder or file for incident remediation")
+	okfDest := flag.String("dest", "", "Optional target destination directory for generated OKF documentation (e.g. OKF/Smartstore)")
+	okfTarget := flag.String("target", "", "Optional target destination directory for generated OKF documentation (e.g. OKF/Smartstore)")
 
 	// Snyk workflow flags
 	enableSnykJson := flag.Bool("snykjson", false, "Run 'snyk code test --json', normalize findings SARIF, and output to snykOutput/Output<datetime>.json")
@@ -117,17 +122,26 @@ func main() {
 
 	// If --okf flag is specified, run the documentation indexer and exit
 	if *okfRepoPath != "" {
-		err := okf.Generate(*okfRepoPath, *okfScope)
+		targetOut := *okfDest
+		if targetOut == "" {
+			targetOut = *okfTarget
+		}
+		err := okf.Generate(*okfRepoPath, *okfScope, targetOut)
 		if err != nil {
 			log.Fatalf("OKF Generation failed: %v", err)
 		}
 		os.Exit(0)
 	}
 
-	if *ticketPath == "" || *repoPath == "" || *runsDir == "" {
-		log.Println("Error: Missing required arguments.")
+	if *ticketPath == "" || *repoPath == "" {
+		log.Println("Error: Missing required arguments (--ticket and --repo are required).")
 		flag.Usage()
 		os.Exit(1)
+	}
+
+	runs := *runsDir
+	if runs == "" {
+		runs = "runs"
 	}
 
 	skill := *skillPathLower
@@ -135,7 +149,15 @@ func main() {
 		skill = *skillPathUpper
 	}
 
-	err := runner.Run(*ticketPath, *repoPath, *runsDir, *enablePR, *enableRecs, *enableTest, skill)
+	okfPath := *okfPathLower
+	if okfPath == "" {
+		okfPath = *okfPathUpper
+	}
+	if okfPath == "" {
+		okfPath = *okfPathShort
+	}
+
+	err := runner.Run(*ticketPath, *repoPath, runs, *enablePR, *enableRecs, *enableTest, skill, okfPath)
 	if err != nil {
 		log.Fatalf("ACRE execution failed: %v", err)
 	}

@@ -30,7 +30,7 @@ const (
 )
 
 // Run executes the full incident remediation pipeline with self-healing retries.
-func Run(ticketPath, repoPath, runsDir string, enablePR, enableRecs, enableTest bool, skillPath string) error {
+func Run(ticketPath, repoPath, runsDir string, enablePR, enableRecs, enableTest bool, skillPath string, okfPath string) error {
 	printHeader()
 
 	// 1. Load Ticket
@@ -62,7 +62,7 @@ func Run(ticketPath, repoPath, runsDir string, enablePR, enableRecs, enableTest 
 	// 2. Generate Prompt
 	fmt.Printf("%s[%s]%s Generating remediation prompt...\n", Cyan, "2/6", Reset)
 	isAnalysisOnly := enableRecs || enableTest
-	p := prompt.Generate(t, repoPath, isAnalysisOnly, skillPath)
+	p := prompt.Generate(t, repoPath, isAnalysisOnly, skillPath, okfPath)
 	fmt.Printf("   Remediation prompt generated (%d chars).\n\n", len(p))
 
 	var opencodeOut string
@@ -362,7 +362,7 @@ func printHeader() {
   / _ | / __// _ \/ _ \
  / __ |/ /__/ , _/ ___/
 /_/ |_|\___//_/|_/_/    
-Automatic Code Remediation Engine v2.0.0
+Automatic Code Remediation Engine v2.5.0
 `
 	fmt.Printf("%s%s%s\n", Bold, Green, header)
 }

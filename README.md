@@ -8,7 +8,7 @@ An Incident-Driven Automatic Code Remediation Engine.
 
 * **Ticket Ingestion**: Loads and parses structured JSON incident reports.
 * **Domain Skills & Custom Rules (`--skill`)**: Ingests custom `.md` skills or skill directories (e.g. `--skill skills/sample_skill.md` or `--skill skills/`) to enforce team coding rules, architecture standards, and domain invariants without editing Go code.
-* **Open Knowledge Format (OKF) Integration**: Automatically detects and ingests OKF v0.1 specification directories (e.g. `OKF/<repoName>/`) containing structured markdown files and YAML metadata.
+* **Open Knowledge Format (OKF) Integration**: Automatically detects or explicitly ingests OKF v0.1 specification directories (e.g. `OKF/<repoName>/` or `--okf-path <path>`) containing structured markdown files and YAML metadata.
 * **Prompt Construction**: Programmatically builds detailed diagnostic prompts for OpenCode with codebase styling, backend focus scopes, and senior engineering guidelines.
 * **OpenCode CLI Integration**: Executes OpenCode non-interactively using the `--dangerously-skip-permissions` sandbox to repair the code.
 * **Dynamic Build & Test Runners**: Scans target codebases to detect solutions (`.sln`/`.slnx`) and test projects, executing clean builds (`dotnet build <sln>`) and test suites (`dotnet test <sln>`).
@@ -49,17 +49,21 @@ An Incident-Driven Automatic Code Remediation Engine.
   ```bash
   ./acre --ticket ../tickets/ENG-0001.json --repo /path/to/target/repo --runs-dir ../runs --pr
   ```
+- **Remediation with Explicit OKF Architecture Index (`--okf-path`)**:
+  ```bash
+  ./acre --ticket ../tickets/ENG-0001.json --repo /path/to/target/repo --okf-path OKF/Smartstore --pr
+  ```
 - **Remediation with Custom Domain Skill / Team Rules (`--skill`)**:
   ```bash
-  ./acre --ticket ../tickets/ENG-0001.json --repo /path/to/target/repo --runs-dir ../runs --skill ../skills/sample_skill.md --pr
+  ./acre --ticket ../tickets/ENG-0001.json --repo /path/to/target/repo --skill ../skills/sample_skill.md --pr
   ```
 - **Recommendations Mode (no code changes, creates `recommendations.md` & opens PR)**:
   ```bash
-  ./acre --ticket ../tickets/ENG-0001.json --repo /path/to/target/repo --runs-dir ../runs -r
+  ./acre --ticket ../tickets/ENG-0001.json --repo /path/to/target/repo -r
   ```
 - **Test Mode (`--test` dry-run, no git operations)**:
   ```bash
-  ./acre --ticket ../tickets/ENG-0001.json --repo /path/to/target/repo --runs-dir ../runs --test
+  ./acre --ticket ../tickets/ENG-0001.json --repo /path/to/target/repo --test
   ```
 
 > [!TIP]
@@ -137,11 +141,18 @@ Ingests the normalized `Output<datetime>.json` file, builds a targeted system pr
 
 ## OKF Documentation Generator
 
-Supports scanning codebases and generating/updating conformant OKF v0.1 documentation directories under `OKF/`:
+Supports scanning codebases and generating/updating conformant OKF v0.1 documentation directories:
 
 ```bash
-./acre --okf /path/to/target/repo [--scope /path/to/target/repo/src/SubModule]
+# Scan full repository (saves to OKF/<repoName>/ by default)
+./acre --okf /path/to/target/repo
+
+# Scan a focused submodule and save/update a specific target directory
+./acre --okf /path/to/target/repo --scope src/Services/PaymentGateway --dest OKF/CustomFolder
 ```
+
+> [!NOTE]
+> **Iterative Multi-Scope Updates**: When running with `--scope`, if the destination folder already contains OKF files, ACRE automatically pre-loads the existing `index.md`, `architecture.md`, and `log.md` into the agent context, allowing OpenCode to seamlessly merge and link new module concepts into the existing documentation graph without overwriting previous work.
 
 ---
 

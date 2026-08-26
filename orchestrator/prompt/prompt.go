@@ -7,12 +7,13 @@ import (
 	"path/filepath"
 	"strings"
 
+	"acre/okf"
 	"acre/snyk"
 	"acre/ticket"
 )
 
 // Generate constructs a remediation prompt for OpenCode based on the ticket details.
-func Generate(t *ticket.Ticket, repoPath string, enableRecs bool, skillPath string) string {
+func Generate(t *ticket.Ticket, repoPath string, enableRecs bool, skillPath string, okfPath string) string {
 	var builder strings.Builder
 
 	builder.WriteString(fmt.Sprintf("Fix the incident issue described below in the target repository at `%s`.\n\n", repoPath))
@@ -27,34 +28,8 @@ func Generate(t *ticket.Ticket, repoPath string, enableRecs bool, skillPath stri
 
 	builder.WriteString(fmt.Sprintf("Repository Path: %s\n\n", repoPath))
 
-	// Look for OKF codebase index context (directory conforming to OKF v0.1 or legacy file)
-	repoName := filepath.Base(repoPath)
-	okfDirPaths := []string{
-		filepath.Join("OKF", repoName),
-		filepath.Join("..", "OKF", repoName),
-	}
-	var okfAbsPath string
-	var indexContent string
-	var foundOKF bool
-
-	for _, dirPath := range okfDirPaths {
-		info, err := os.Stat(dirPath)
-		if err == nil && info.IsDir() {
-			abs, err := filepath.Abs(dirPath)
-			if err == nil {
-				okfAbsPath = abs
-				indexPath := filepath.Join(dirPath, "index.md")
-				data, readErr := os.ReadFile(indexPath)
-				if readErr == nil {
-					indexContent = string(data)
-					foundOKF = true
-					break
-				}
-			}
-		}
-	}
-
-	if foundOKF {
+	// Look for OKF codebase index context (explicit path, repository OKF, or standard OKF directory/file)
+	if okfAbsPath, indexContent, foundOKF := okf.LoadOKF(okfPath, repoPath); foundOKF {
 		builder.WriteString("## Codebase Context & Index (Open Knowledge Format)\n")
 		builder.WriteString("This codebase uses the Open Knowledge Format (OKF) v0.1 to manage architectural and domain knowledge.\n")
 		builder.WriteString(fmt.Sprintf("The absolute path to the OKF documentation folder on this system is: %s\n\n", okfAbsPath))
@@ -62,26 +37,12 @@ func Generate(t *ticket.Ticket, repoPath string, enableRecs bool, skillPath stri
 		builder.WriteString("```markdown\n")
 		builder.WriteString(indexContent)
 		builder.WriteString("\n```\n\n")
-		builder.WriteString("### 📖 OKF Progressive Disclosure Guidelines:\n")
+		builder.WriteString("### OKF Progressive Disclosure Guidelines:\n")
 		builder.WriteString("To ensure efficiency, minimize token cost, and prevent context lag, use the following strategy to discover and read documentation:\n")
 		builder.WriteString("1. **Analyze the Root Index**: Start by reviewing the `Navigation Graph` and `Key Entry Points` in the `index.md` above to identify which documentation concept files might be relevant to the bug.\n")
 		builder.WriteString("2. **Inspect Full YAML Metadata Block First**: The documentation concept files are located in the directory path provided above. Each file begins with a YAML frontmatter metadata block delimited by `---` containing `type`, `title`, `description`, `resource` and `tags`.\n")
 		builder.WriteString("   Before reading an entire document body, read the full YAML frontmatter block (between opening and closing `---`) at the top of candidate files (e.g., `core_flow.md` or `testing.md`) to verify its target domain.\n")
 		builder.WriteString("3. **Disclose on Demand**: If and only if the metadata confirms the file is highly relevant to the problem (e.g. describes the flow or layers where the bug occurred, or contains specific build/test instructions), proceed to read the rest of the file. Otherwise, skip it to keep the context clean.\n\n")
-	} else {
-		// Fallback to legacy single file OKF if directory/index.md isn't found
-		okfPaths := []string{
-			filepath.Join("OKF", repoName+".md"),
-			filepath.Join("..", "OKF", repoName+".md"),
-		}
-		for _, p := range okfPaths {
-			if data, err := os.ReadFile(p); err == nil {
-				builder.WriteString("## Codebase Context & Index (Open Knowledge Format)\n")
-				builder.WriteString(string(data))
-				builder.WriteString("\n")
-				break
-			}
-		}
 	}
 
 	// Include custom domain skills & engineering guidelines if provided via --skill

@@ -292,7 +292,7 @@ func printSnykHeader() {
   / _ | / __// _ \/ _ \ / __// |/ / \ \/ /
  / __ |/ /__/ , _/ ___/_\ \ /    /   \  / 
 /_/ |_|\___//_/|_/_/   /___//_/|_/    /_/  
-ACRE Snyk Security Remediation Engine v2.0.0
+ACRE Snyk Security Remediation Engine v2.5.0
 `
 	fmt.Printf("%s%s%s\n", Bold, Cyan, header)
 }

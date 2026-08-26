@@ -12,7 +12,7 @@ import (
 )
 
 // Generate runs the OKF documentation pipeline for a repository.
-func Generate(repoPath string, scope string) error {
+func Generate(repoPath string, scope string, targetDest string) error {
 	repoAbs, err := filepath.Abs(repoPath)
 	if err != nil {
 		return fmt.Errorf("invalid repository path: %w", err)
@@ -33,7 +33,35 @@ func Generate(repoPath string, scope string) error {
 	if scope != "" {
 		fmt.Printf("   Focus Scope: %s\n", scope)
 	}
-	fmt.Printf("   Generating OKF v0.1 index under OKF/%s...\n\n", repoName)
+
+	destOKFDir := targetDest
+	if destOKFDir == "" {
+		destOKFDir = filepath.Join("OKF", repoName)
+		if _, statErr := os.Stat("orchestrator"); statErr != nil {
+			// Currently in orchestrator directory, destination is "../OKF/<repoName>"
+			destOKFDir = filepath.Join("..", "OKF", repoName)
+		}
+	}
+	fmt.Printf("   Target OKF Destination: %s\n\n", destOKFDir)
+
+	codebaseOKFDir := filepath.Join(repoAbs, "OKF")
+
+	// If destination OKF already exists with documentation, pre-seed codebaseOKFDir
+	// so OpenCode sees pre-existing index.md, architecture.md, log.md and updates them seamlessly.
+	if destInfo, dErr := os.Stat(destOKFDir); dErr == nil && destInfo.IsDir() {
+		_ = os.MkdirAll(codebaseOKFDir, 0755)
+		_ = filepath.Walk(destOKFDir, func(path string, info os.FileInfo, err error) error {
+			if err == nil && !info.IsDir() && strings.HasSuffix(info.Name(), ".md") {
+				rel, _ := filepath.Rel(destOKFDir, path)
+				targetFile := filepath.Join(codebaseOKFDir, rel)
+				_ = os.MkdirAll(filepath.Dir(targetFile), 0755)
+				if data, rErr := os.ReadFile(path); rErr == nil {
+					_ = os.WriteFile(targetFile, data, 0644)
+				}
+			}
+			return nil
+		})
+	}
 
 	prompt := findAndLoadOKFPrompt(repoName, scope)
 
@@ -43,20 +71,9 @@ func Generate(repoPath string, scope string) error {
 		return fmt.Errorf("OpenCode failed to index codebase: %w\nOutput: %s", err, out)
 	}
 
-	codebaseOKFDir := filepath.Join(repoAbs, "OKF")
 	info, err := os.Stat(codebaseOKFDir)
 	if err != nil || !info.IsDir() {
 		return fmt.Errorf("OpenCode finished but did not generate the OKF/ directory inside the repository. Output:\n%s", out)
-	}
-
-	// Move/copy OKF files to ACRE's OKF/<repoName>/
-	destOKFDir := filepath.Join("OKF", repoName)
-	// Try one level up if ACRE is run from orchestrator directory
-	if _, statErr := os.Stat("orchestrator"); statErr == nil {
-		// Currently in project root
-	} else {
-		// Currently in orchestrator directory, destination is "../OKF/<repoName>"
-		destOKFDir = filepath.Join("..", "OKF", repoName)
 	}
 
 	if err := os.MkdirAll(destOKFDir, 0755); err != nil {
@@ -85,7 +102,7 @@ func Generate(repoPath string, scope string) error {
 			if err := os.WriteFile(destPath, data, 0644); err != nil {
 				return err
 			}
-			fmt.Printf("   [OKF file created] %s\n", rel)
+			fmt.Printf("   [OKF file created/updated] %s\n", rel)
 			copiedCount++
 		}
 		return nil
@@ -196,8 +213,11 @@ func LoadOKF(specifiedPath string, repoPath string) (absPath string, indexConten
 	repoName := filepath.Base(repoPath)
 	candidates = append(candidates,
 		filepath.Join(repoPath, "OKF"),
+		filepath.Join(repoPath, ".okf"),
 		filepath.Join("OKF", repoName),
 		filepath.Join("..", "OKF", repoName),
+		filepath.Join("OKF", repoName+".md"),
+		filepath.Join("..", "OKF", repoName+".md"),
 	)
 
 	for _, cand := range candidates {
